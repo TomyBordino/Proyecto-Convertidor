@@ -147,7 +147,7 @@ a:hover { color: var(--color-primary-dark); }
   padding: 3px 10px;
   margin-bottom: 8px;
 }
-.ad-slot--sidebar { min-height: 250px; margin: 0; }
+.ad-slot--sidebar { margin: 0; }
 .ad-slot--leaderboard { max-width: var(--max-width); }
 
 /* ============ Hero ============ */
@@ -261,14 +261,18 @@ a:hover { color: var(--color-primary-dark); }
 }
 
 .tool-layout {
-  display: grid;
-  grid-template-columns: 1fr 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 24px;
-  align-items: start;
 }
-@media (max-width: 860px) {
-  .tool-layout { grid-template-columns: 1fr; }
-  .tool-sidebar { order: 2; }
+.tool-main {
+  width: 100%;
+  max-width: 820px;
+}
+.tool-sidebar {
+  width: 100%;
+  max-width: 820px;
 }
 
 .tool-panel { display: none; }
