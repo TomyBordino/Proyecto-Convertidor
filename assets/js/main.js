@@ -21,8 +21,23 @@ function activateTab(tabKey) {
   panels.forEach((p) => p.classList.toggle("active", p.id === "panel-" + tabKey));
 }
 
+// Cada pestaña tiene su propia landing page dedicada (data-href). Si ya
+// estás viendo esa herramienta no hace falta navegar; si no, la pestaña
+// te lleva a su URL real en vez de solo cambiar el panel en la página
+// actual, así el navegador (y Google) siempre reflejan la herramienta
+// que se está mostrando.
+const currentFile = location.pathname.split("/").pop() || "index.html";
+
 tabButtons.forEach((btn) => {
-  btn.addEventListener("click", () => activateTab(btn.dataset.tab));
+  btn.addEventListener("click", () => {
+    if (btn.classList.contains("active")) return;
+    const href = btn.dataset.href;
+    if (href && href !== currentFile) {
+      window.location.href = href;
+      return;
+    }
+    activateTab(btn.dataset.tab);
+  });
 });
 
 // Cada landing page dedicada declara su herramienta principal en

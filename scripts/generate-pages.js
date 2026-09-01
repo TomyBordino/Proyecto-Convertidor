@@ -5,6 +5,12 @@
  * plano: este script es solo una herramienta de autor, no corre en
  * producción ni en el navegador del usuario.
  *
+ * El script es idempotente: usa patrones (no texto literal exacto) para
+ * encontrar cada bloque a reemplazar, así que es seguro correrlo una y
+ * otra vez aunque index.html ya tenga aplicado el contenido de una
+ * generación anterior (incluida la sección "Más herramientas", que se
+ * quita y se vuelve a insertar en cada corrida en vez de acumularse).
+ *
  * Uso: node scripts/generate-pages.js   (desde la raíz del proyecto)
  */
 
@@ -15,18 +21,12 @@ const { PAGES, SITE_URL } = require("./pages-config");
 const ROOT = path.join(__dirname, "..");
 const BASE_HTML = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
 
-// Strings actuales de index.html que se reemplazan por página.
-const CURRENT = {
-  title: "ConvertiYa — Comprimir Imágenes y Convertir Archivos Gratis",
-  description:
-    "Herramientas gratis para comprimir imágenes, convertir HEIC/PDF/audio/fuentes y más — todo 100% en tu navegador, sin subir archivos a ningún servidor.",
-  twitterDescription:
-    "Herramientas gratis para comprimir imágenes, convertir HEIC/PDF/audio/fuentes y más — todo 100% en tu navegador.",
-  canonical: `${SITE_URL}/`,
-  h1: '<h1>Convertí tus archivos <span class="accent">gratis y al instante</span>, sin instalar nada</h1>',
-  intro:
-    '<p>Todo el procesamiento ocurre en tu propio navegador: tus archivos <strong>nunca se suben a ningún servidor</strong>, así que es privado y funciona al instante.</p>',
-};
+function replaceOrThrow(html, pattern, replacement, label) {
+  if (!pattern.test(html)) {
+    throw new Error(`No se encontró el patrón esperado para "${label}". Revisá la estructura de index.html.`);
+  }
+  return html.replace(pattern, replacement);
+}
 
 function buildOtherToolsSection(currentPage) {
   const others = PAGES.filter((p) => p.id !== currentPage.id);
@@ -49,68 +49,75 @@ ${cards}
 `;
 }
 
-function replaceOrThrow(html, search, replacement, label) {
-  if (!html.includes(search)) {
-    throw new Error(`No se encontró el string esperado para "${label}". Revisá CURRENT en generate-pages.js contra index.html.`);
-  }
-  return html.split(search).join(replacement);
-}
-
 function generatePage(page) {
   const url = page.file === "index.html" ? `${SITE_URL}/` : `${SITE_URL}/${page.file}`;
   const h1 = `<h1>${page.h1pre} <span class="accent">${page.h1accent}</span>${page.h1post}</h1>`;
-  const intro = `<p>${page.intro}</p>`;
 
   let html = BASE_HTML;
-  html = replaceOrThrow(html, `<title>${CURRENT.title}</title>`, `<title>${page.title}</title>`, "title");
+
+  // Quitar cualquier sección "Más herramientas" ya insertada por una
+  // corrida anterior, para no acumular duplicados.
+  html = html.replace(/[ \t]*<section id="mas-herramientas"[\s\S]*?<\/section>\s*\n/, "");
+
+  html = replaceOrThrow(html, /<title>[\s\S]*?<\/title>/, `<title>${page.title}</title>`, "title");
   html = replaceOrThrow(
     html,
-    `<meta name="description" content="${CURRENT.description}">`,
+    /<meta name="description" content="[^"]*">/,
     `<meta name="description" content="${page.description}">`,
     "meta description"
   );
   html = replaceOrThrow(
     html,
-    `<link rel="canonical" href="${CURRENT.canonical}">`,
+    /<link rel="canonical" href="[^"]*">/,
     `<link rel="canonical" href="${url}">`,
     "canonical"
   );
   html = replaceOrThrow(
     html,
-    `<meta property="og:title" content="${CURRENT.title}">`,
+    /<meta property="og:title" content="[^"]*">/,
     `<meta property="og:title" content="${page.title}">`,
     "og:title"
   );
   html = replaceOrThrow(
     html,
-    `<meta property="og:description" content="${CURRENT.description}">`,
+    /<meta property="og:description" content="[^"]*">/,
     `<meta property="og:description" content="${page.description}">`,
     "og:description"
   );
   html = replaceOrThrow(
     html,
-    `<meta property="og:url" content="${CURRENT.canonical}">`,
+    /<meta property="og:url" content="[^"]*">/,
     `<meta property="og:url" content="${url}">`,
     "og:url"
   );
   html = replaceOrThrow(
     html,
-    `<meta name="twitter:title" content="${CURRENT.title}">`,
+    /<meta name="twitter:title" content="[^"]*">/,
     `<meta name="twitter:title" content="${page.title}">`,
     "twitter:title"
   );
   html = replaceOrThrow(
     html,
-    `<meta name="twitter:description" content="${CURRENT.twitterDescription}">`,
+    /<meta name="twitter:description" content="[^"]*">/,
     `<meta name="twitter:description" content="${page.description}">`,
     "twitter:description"
   );
-  html = replaceOrThrow(html, "<body>", `<body data-default-tab="${page.tab}">`, "body tag");
-  html = replaceOrThrow(html, CURRENT.h1, h1, "hero h1");
-  html = replaceOrThrow(html, CURRENT.intro, intro, "hero intro");
   html = replaceOrThrow(
     html,
-    '  <section id="como-funciona"',
+    /<body(?:\s+data-default-tab="[^"]*")?>/,
+    `<body data-default-tab="${page.tab}">`,
+    "body tag"
+  );
+  html = replaceOrThrow(html, /<h1>[\s\S]*?<\/h1>/, h1, "hero h1");
+  html = replaceOrThrow(
+    html,
+    /(<\/h1>\s*)<p>[\s\S]*?<\/p>(\s*<div class="hero-trust">)/,
+    `$1<p>${page.intro}</p>$2`,
+    "hero intro"
+  );
+  html = replaceOrThrow(
+    html,
+    /  <section id="como-funciona"/,
     `${buildOtherToolsSection(page)}  <section id="como-funciona"`,
     "insertar sección de otras herramientas"
   );
