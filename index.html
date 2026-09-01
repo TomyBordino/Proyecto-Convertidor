@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConvertiYa — Convertidor de Archivos Online Gratis</title>
+<meta name="description" content="Convierte imágenes entre PNG, JPG y WEBP, transforma imágenes a PDF y extrae imágenes de un PDF. Todo gratis, rápido y directamente en tu navegador.">
+<link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+<link rel="stylesheet" href="assets/css/style.css">
+
+<!-- ============================================================
+     GOOGLE ADSENSE — script de verificación / auto ads
+     Reemplazá "ca-pub-XXXXXXXXXXXXXXXX" por tu ID real de AdSense
+     una vez que tu cuenta esté aprobada. Ver README.md sección
+     "Monetización con anuncios" para el paso a paso.
+     ============================================================ -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a href="index.html" class="logo">
+      <img src="assets/img/favicon.svg" alt="" width="28" height="28">
+      <span>Convert<strong>iYa</strong></span>
+    </a>
+    <nav class="main-nav">
+      <a href="#herramientas">Herramientas</a>
+      <a href="#como-funciona">Cómo funciona</a>
+      <a href="#faq">Preguntas frecuentes</a>
+    </nav>
+  </div>
+</header>
+
+<!-- Anuncio: banner superior -->
+<div class="ad-slot ad-slot--leaderboard container">
+  <span class="ad-label">Publicidad</span>
+  <ins class="adsbygoogle"
+       style="display:block"
+       data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+       data-ad-slot="0000000000"
+       data-ad-format="auto"
+       data-full-width-responsive="true"></ins>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+</div>
+
+<main>
+  <section class="hero container">
+    <h1>Convertí tus archivos gratis, rápido y sin instalar nada</h1>
+    <p>Todo el procesamiento ocurre en tu propio navegador: tus archivos <strong>nunca se suben a ningún servidor</strong>, así que es privado y funciona al instante.</p>
+  </section>
+
+  <section id="herramientas" class="tools container">
+
+    <div class="tabs" role="tablist">
+      <button class="tab-btn active" data-tab="img2img" role="tab" aria-selected="true">Convertir imágenes</button>
+      <button class="tab-btn" data-tab="img2pdf" role="tab" aria-selected="false">Imágenes a PDF</button>
+      <button class="tab-btn" data-tab="pdf2img" role="tab" aria-selected="false">PDF a imágenes</button>
+    </div>
+
+    <div class="tool-layout">
+      <div class="tool-main">
+
+        <!-- Herramienta 1: Imagen -> Imagen -->
+        <section class="tool-panel active" id="panel-img2img">
+          <h2>Convertir imágenes (PNG, JPG, WEBP)</h2>
+          <p class="panel-desc">Subí una o varias imágenes y elegí el formato de salida.</p>
+
+          <div class="dropzone" id="dropzone-img2img">
+            <input type="file" id="input-img2img" accept="image/*" multiple hidden>
+            <p><strong>Arrastrá y soltá</strong> tus imágenes acá</p>
+            <p class="muted">o</p>
+            <button type="button" class="btn btn-secondary" data-trigger="input-img2img">Elegir archivos</button>
+          </div>
+
+          <div class="options-row">
+            <label>
+              Formato de salida
+              <select id="img2img-format">
+                <option value="image/png">PNG</option>
+                <option value="image/jpeg" selected>JPG</option>
+                <option value="image/webp">WEBP</option>
+              </select>
+            </label>
+            <label id="img2img-quality-wrap">
+              Calidad (<span id="img2img-quality-val">90</span>%)
+              <input type="range" id="img2img-quality" min="10" max="100" value="90">
+            </label>
+            <button class="btn btn-primary" id="btn-img2img-convert" disabled>Convertir</button>
+          </div>
+
+          <ul class="file-list" id="img2img-filelist"></ul>
+          <div class="results" id="img2img-results"></div>
+        </section>
+
+        <!-- Herramienta 2: Imagenes -> PDF -->
+        <section class="tool-panel" id="panel-img2pdf">
+          <h2>Convertir imágenes a PDF</h2>
+          <p class="panel-desc">Subí una o varias imágenes; se combinarán en un único PDF respetando el orden de selección.</p>
+
+          <div class="dropzone" id="dropzone-img2pdf">
+            <input type="file" id="input-img2pdf" accept="image/*" multiple hidden>
+            <p><strong>Arrastrá y soltá</strong> tus imágenes acá</p>
+            <p class="muted">o</p>
+            <button type="button" class="btn btn-secondary" data-trigger="input-img2pdf">Elegir archivos</button>
+          </div>
+
+          <div class="options-row">
+            <label>
+              Tamaño de página
+              <select id="img2pdf-pagesize">
+                <option value="a4">A4</option>
+                <option value="letter">Carta</option>
+                <option value="fit">Ajustar a la imagen</option>
+              </select>
+            </label>
+            <label>
+              Orientación
+              <select id="img2pdf-orientation">
+                <option value="p">Vertical</option>
+                <option value="l">Horizontal</option>
+              </select>
+            </label>
+            <button class="btn btn-primary" id="btn-img2pdf-convert" disabled>Generar PDF</button>
+          </div>
+
+          <ul class="file-list" id="img2pdf-filelist"></ul>
+          <div class="results" id="img2pdf-results"></div>
+        </section>
+
+        <!-- Herramienta 3: PDF -> Imagenes -->
+        <section class="tool-panel" id="panel-pdf2img">
+          <h2>Extraer imágenes de un PDF</h2>
+          <p class="panel-desc">Cada página del PDF se convertirá en una imagen individual.</p>
+
+          <div class="dropzone" id="dropzone-pdf2img">
+            <input type="file" id="input-pdf2img" accept="application/pdf" hidden>
+            <p><strong>Arrastrá y soltá</strong> tu PDF acá</p>
+            <p class="muted">o</p>
+            <button type="button" class="btn btn-secondary" data-trigger="input-pdf2img">Elegir archivo</button>
+          </div>
+
+          <div class="options-row">
+            <label>
+              Formato de salida
+              <select id="pdf2img-format">
+                <option value="image/png" selected>PNG</option>
+                <option value="image/jpeg">JPG</option>
+              </select>
+            </label>
+            <label>
+              Calidad de render
+              <select id="pdf2img-scale">
+                <option value="1">Normal</option>
+                <option value="2" selected>Alta</option>
+                <option value="3">Muy alta</option>
+              </select>
+            </label>
+            <button class="btn btn-primary" id="btn-pdf2img-convert" disabled>Convertir</button>
+          </div>
+
+          <ul class="file-list" id="pdf2img-filelist"></ul>
+          <div class="results" id="pdf2img-results"></div>
+        </section>
+
+      </div>
+
+      <!-- Anuncio: barra lateral (desktop) -->
+      <aside class="tool-sidebar">
+        <div class="ad-slot ad-slot--sidebar">
+          <span class="ad-label">Publicidad</span>
+          <ins class="adsbygoogle"
+               style="display:block"
+               data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+               data-ad-slot="0000000001"
+               data-ad-format="auto"
+               data-full-width-responsive="true"></ins>
+          <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Anuncio: contenido intermedio -->
+  <div class="ad-slot ad-slot--incontent container">
+    <span class="ad-label">Publicidad</span>
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+         data-ad-slot="0000000002"
+         data-ad-format="auto"
+         data-full-width-responsive="true"></ins>
+    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+  </div>
+
+  <section id="como-funciona" class="info-section container">
+    <h2>¿Cómo funciona?</h2>
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">1</span>
+        <h3>Elegí una herramienta</h3>
+        <p>Seleccioná el tipo de conversión que necesitás en la parte superior.</p>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <h3>Subí tus archivos</h3>
+        <p>Arrastralos a la zona indicada o seleccionalós manualmente.</p>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <h3>Descargá el resultado</h3>
+        <p>La conversión se hace en tu navegador y podés descargar el archivo al instante.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="info-section container">
+    <h2>Preguntas frecuentes</h2>
+    <details>
+      <summary>¿Mis archivos se suben a un servidor?</summary>
+      <p>No. Todas las conversiones se procesan localmente en tu navegador usando JavaScript. Tus archivos nunca salen de tu computadora.</p>
+    </details>
+    <details>
+      <summary>¿Tiene algún costo?</summary>
+      <p>No, el servicio es completamente gratuito. Se sostiene gracias a los anuncios que ves en la página.</p>
+    </details>
+    <details>
+      <summary>¿Hay límite de tamaño de archivo?</summary>
+      <p>El límite depende de la memoria de tu navegador. Para archivos muy grandes (cientos de MB) el proceso puede ser más lento.</p>
+    </details>
+  </section>
+</main>
+
+<!-- Anuncio: pie de página -->
+<div class="ad-slot ad-slot--footer container">
+  <span class="ad-label">Publicidad</span>
+  <ins class="adsbygoogle"
+       style="display:block"
+       data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+       data-ad-slot="0000000003"
+       data-ad-format="auto"
+       data-full-width-responsive="true"></ins>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+</div>
+
+<footer class="site-footer">
+  <div class="container footer-inner">
+    <p>&copy; <span id="year"></span> ConvertiYa. Todos los derechos reservados.</p>
+    <nav>
+      <a href="privacy.html">Política de privacidad</a>
+      <a href="terms.html">Términos de uso</a>
+    </nav>
+  </div>
+</footer>
+
+<!-- Librerías de terceros (CDN) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script src="assets/js/converters.js"></script>
+<script src="assets/js/main.js"></script>
+</body>
+</html>
