@@ -78,6 +78,18 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><circle cx="10" cy="15" r="2"/><path d="m14 19-2.5-2.5"/></svg>
         PDF a imágenes
       </button>
+      <button class="tab-btn" data-tab="audio" role="tab" aria-selected="false">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        Convertidor de audio
+      </button>
+      <button class="tab-btn" data-tab="font" role="tab" aria-selected="false">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+        Convertidor de fuentes
+      </button>
+      <button class="tab-btn" data-tab="document" role="tab" aria-selected="false">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+        Convertidor de documentos
+      </button>
     </div>
 
     <div class="tool-layout">
@@ -223,6 +235,86 @@
           <div class="results" id="pdf2img-results"></div>
         </section>
 
+        <!-- Herramienta 4: Audio -->
+        <section class="tool-panel" id="panel-audio">
+          <h2>Convertidor de audio</h2>
+          <p class="panel-desc">Convertí audio a WAV o MP3. Funciona con lo que tu navegador pueda reproducir (MP3, WAV, OGG, M4A/AAC).</p>
+
+          <div class="dropzone" id="dropzone-audio">
+            <input type="file" id="input-audio" accept="audio/*" multiple hidden>
+            <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
+            <p><strong>Arrastrá y soltá</strong> tus archivos de audio acá</p>
+            <p class="muted">o</p>
+            <button type="button" class="btn btn-secondary" data-trigger="input-audio">Elegir archivos</button>
+          </div>
+
+          <div class="options-row">
+            <label>
+              Formato de salida
+              <select id="audio-format">
+                <option value="mp3" selected>MP3</option>
+                <option value="wav">WAV</option>
+              </select>
+            </label>
+            <label id="audio-bitrate-wrap">
+              Calidad
+              <select id="audio-bitrate">
+                <option value="128">128 kbps</option>
+                <option value="192" selected>192 kbps</option>
+                <option value="320">320 kbps</option>
+              </select>
+            </label>
+            <button class="btn btn-primary" id="btn-audio-convert" disabled>Convertir</button>
+          </div>
+
+          <ul class="file-list" id="audio-filelist"></ul>
+          <div class="results" id="audio-results"></div>
+        </section>
+
+        <!-- Herramienta 5: Fuentes -->
+        <section class="tool-panel" id="panel-font">
+          <h2>Convertidor de fuentes</h2>
+          <p class="panel-desc">Convertí entre TTF/OTF y WOFF (el formato liviano para usar fuentes en la web). Detecta automáticamente la dirección según el archivo que subas. WOFF2 todavía no está soportado.</p>
+
+          <div class="dropzone" id="dropzone-font">
+            <input type="file" id="input-font" accept=".ttf,.otf,.woff" multiple hidden>
+            <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
+            <p><strong>Arrastrá y soltá</strong> tus fuentes acá</p>
+            <p class="muted">o</p>
+            <button type="button" class="btn btn-secondary" data-trigger="input-font">Elegir archivos</button>
+          </div>
+
+          <div class="options-row">
+            <span class="options-hint">La dirección de la conversión (TTF/OTF ⇄ WOFF) se detecta automáticamente.</span>
+            <button class="btn btn-primary" id="btn-font-convert" disabled>Convertir</button>
+          </div>
+
+          <ul class="file-list" id="font-filelist"></ul>
+          <div class="results" id="font-results"></div>
+        </section>
+
+        <!-- Herramienta 6: Documentos -->
+        <section class="tool-panel" id="panel-document">
+          <h2>Convertidor de documentos</h2>
+          <p class="panel-desc">Convertí un .txt en PDF, o extraé el texto de un PDF a un archivo .txt. Detecta automáticamente la dirección según el archivo que subas.</p>
+
+          <div class="dropzone" id="dropzone-document">
+            <input type="file" id="input-document" accept=".txt,.md,.pdf" multiple hidden>
+            <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
+            <p><strong>Arrastrá y soltá</strong> tus archivos acá</p>
+            <p class="muted">o</p>
+            <button type="button" class="btn btn-secondary" data-trigger="input-document">Elegir archivos</button>
+          </div>
+
+          <div class="options-row">
+            <span class="options-hint">La dirección de la conversión (.txt/.md → PDF, o PDF → .txt) se detecta automáticamente.</span>
+            <button class="btn btn-primary" id="btn-document-convert" disabled>Convertir</button>
+          </div>
+
+          <ul class="file-list" id="document-filelist"></ul>
+          <div class="results" id="document-results"></div>
+        </section>
+
       </div>
 
       <!-- Anuncio: barra lateral (desktop) -->
@@ -317,6 +409,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
 
 <script src="assets/js/converters.js"></script>
 <script src="assets/js/main.js"></script>
