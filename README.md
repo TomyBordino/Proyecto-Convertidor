@@ -6,13 +6,26 @@ anuncios (Google AdSense).
 
 ## Herramientas incluidas
 
-1. **Convertir imágenes**: PNG ⇄ JPG ⇄ WEBP.
-2. **Imágenes a PDF**: combina varias imágenes en un único PDF.
-3. **PDF a imágenes**: exporta cada página de un PDF como PNG o JPG.
+1. **Comprimir imágenes**: reduce el peso de fotos (incluye HEIC/HEIF de iPhone) controlando calidad y ancho máximo.
+2. **Convertir imágenes**: PNG ⇄ JPG ⇄ WEBP ⇄ SVG (embebida), con soporte de entrada HEIC/HEIF/JFIF.
+3. **Imágenes a PDF**: combina varias imágenes en un único PDF.
+4. **PDF a imágenes**: exporta cada página de un PDF como PNG o JPG.
+5. **Convertidor de audio**: cualquier audio (o el audio de un video MP4/MOV/WEBM) a WAV o MP3.
+6. **Convertidor de fuentes**: TTF/OTF ⇄ WOFF.
+7. **Convertidor de documentos**: TXT/MD/DOCX ⇄ PDF, y PDF → TXT o DOCX (solo texto, sin formato avanzado).
+8. **Convertidor de unidades**: longitud, peso, volumen y temperatura.
+9. **Convertidor de zona horaria**: convierte una fecha/hora entre husos horarios usando la API `Intl` del navegador.
 
-Todo el procesamiento ocurre con `<canvas>`, [pdf.js](https://mozilla.github.io/pdf.js/),
-[jsPDF](https://github.com/parallax/jsPDF) y [JSZip](https://stuk.github.io/jszip/),
-cargados desde CDN. No hay build step: es HTML/CSS/JS plano.
+Todo el procesamiento ocurre con `<canvas>`, Web Audio API, `Intl`,
+[pdf.js](https://mozilla.github.io/pdf.js/), [jsPDF](https://github.com/parallax/jsPDF),
+[JSZip](https://stuk.github.io/jszip/), [pako](https://github.com/nodeca/pako),
+[lamejs](https://github.com/zhuker/lamejs) y [heic2any](https://github.com/alexcorvi/heic2any),
+todos cargados desde CDN. No hay build step: es HTML/CSS/JS plano.
+
+**Pendiente / fuera de alcance por ahora**: conversión real de video (ej. MOV a MP4)
+y video/imagen ⇄ GIF, porque requieren un motor pesado (~decenas de MB) tipo
+ffmpeg.wasm; y EPUB, por la complejidad de parsear bien el formato. Ver
+`assets/js/converters.js` si querés retomarlos.
 
 ## Estructura del proyecto
 

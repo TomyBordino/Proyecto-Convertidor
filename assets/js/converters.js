@@ -11,9 +11,28 @@ const Converters = (() => {
     "image/webp": "webp",
   };
 
-  function loadImage(file) {
+  function isHeic(file) {
+    return (
+      file.type === "image/heic" ||
+      file.type === "image/heif" ||
+      /\.(heic|heif)$/i.test(file.name)
+    );
+  }
+
+  /**
+   * Los navegadores no pueden decodificar HEIC/HEIF de forma nativa, así
+   * que lo pasamos primero por heic2any para obtener un JPEG normal.
+   */
+  async function normalizeHeic(file) {
+    if (!isHeic(file)) return file;
+    const result = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.92 });
+    return Array.isArray(result) ? result[0] : result;
+  }
+
+  async function loadImage(file) {
+    const normalized = await normalizeHeic(file);
     return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
+      const url = URL.createObjectURL(normalized);
       const img = new Image();
       img.onload = () => resolve({ img, url });
       img.onerror = () => {
@@ -45,6 +64,17 @@ const Converters = (() => {
       }
       ctx.drawImage(img, 0, 0);
 
+      const baseName = file.name.replace(/\.[^.]+$/, "");
+
+      if (mimeType === "image/svg+xml") {
+        const dataUrl = canvas.toDataURL("image/png");
+        const svg =
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" ` +
+          `viewBox="0 0 ${canvas.width} ${canvas.height}">` +
+          `<image width="${canvas.width}" height="${canvas.height}" href="${dataUrl}"/></svg>`;
+        return { blob: new Blob([svg], { type: "image/svg+xml" }), name: `${baseName}.svg` };
+      }
+
       const blob = await new Promise((resolve, reject) => {
         canvas.toBlob(
           (b) => (b ? resolve(b) : reject(new Error("Conversión fallida"))),
@@ -53,7 +83,6 @@ const Converters = (() => {
         );
       });
 
-      const baseName = file.name.replace(/\.[^.]+$/, "");
       const outName = `${baseName}.${EXT_BY_MIME[mimeType] || "png"}`;
       return { blob, name: outName };
     } finally {
@@ -496,11 +525,11 @@ const Converters = (() => {
   }
 
   // ============================================================
-  // Documentos: TXT/Markdown → PDF, y PDF → TXT
+  // Documentos: TXT/Markdown ⇄ PDF, y PDF ⇄ DOCX (texto plano, sin
+  // conservar formato avanzado de Word)
   // ============================================================
 
-  async function textToPdf(file) {
-    const text = await file.text();
+  function renderTextToPdfBlob(text) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const marginX = 48;
@@ -522,12 +551,16 @@ const Converters = (() => {
       doc.text(line, marginX, y);
       y += lineHeight;
     }
-
-    const baseName = file.name.replace(/\.[^.]+$/, "");
-    return { blob: doc.output("blob"), name: `${baseName}.pdf` };
+    return doc.output("blob");
   }
 
-  async function pdfToText(file) {
+  async function textToPdf(file) {
+    const text = await file.text();
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    return { blob: renderTextToPdfBlob(text), name: `${baseName}.pdf` };
+  }
+
+  async function extractPdfText(file) {
     ensurePdfWorker();
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -538,20 +571,120 @@ const Converters = (() => {
       const content = await page.getTextContent();
       fullText += content.items.map((it) => it.str).join(" ") + "\n\n";
     }
+    return fullText;
+  }
 
+  async function pdfToText(file) {
+    const fullText = await extractPdfText(file);
     const baseName = file.name.replace(/\.[^.]+$/, "");
     return { blob: new Blob([fullText], { type: "text/plain" }), name: `${baseName}.txt` };
   }
 
-  async function convertDocument(file) {
+  function escapeXml(str) {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+  }
+
+  const DOCX_CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`;
+
+  const DOCX_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`;
+
+  const DOCX_CORE_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<dc:title>Documento</dc:title>
+</cp:coreProperties>`;
+
+  const DOCX_APP_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
+<Application>ConvertiYa</Application>
+</Properties>`;
+
+  function buildDocxDocumentXml(text) {
+    const body = text
+      .split(/\r\n|\r|\n/)
+      .map((p) => (p.trim() === "" ? "<w:p/>" : `<w:p><w:r><w:t xml:space="preserve">${escapeXml(p)}</w:t></w:r></w:p>`))
+      .join("");
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>${body}<w:sectPr/></w:body>
+</w:document>`;
+  }
+
+  async function buildDocxBlob(text) {
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", DOCX_CONTENT_TYPES);
+    zip.folder("_rels").file(".rels", DOCX_RELS);
+    zip.folder("docProps").file("core.xml", DOCX_CORE_XML);
+    zip.file("docProps/app.xml", DOCX_APP_XML);
+    zip.file("word/document.xml", buildDocxDocumentXml(text));
+    const blob = await zip.generateAsync({ type: "blob" });
+    return new Blob([blob], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+  }
+
+  async function extractDocxText(file) {
+    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    const documentEntry = zip.file("word/document.xml");
+    if (!documentEntry) throw new Error("El archivo no parece ser un .docx válido.");
+    const xml = await documentEntry.async("string");
+    const doc = new DOMParser().parseFromString(xml, "application/xml");
+    const NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const paragraphs = doc.getElementsByTagNameNS(NS, "p");
+    const lines = [];
+    for (let i = 0; i < paragraphs.length; i++) {
+      const texts = paragraphs[i].getElementsByTagNameNS(NS, "t");
+      let line = "";
+      for (let j = 0; j < texts.length; j++) line += texts[j].textContent;
+      lines.push(line);
+    }
+    return lines.join("\n\n");
+  }
+
+  async function docxToPdf(file) {
+    const text = await extractDocxText(file);
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    return { blob: renderTextToPdfBlob(text), name: `${baseName}.pdf` };
+  }
+
+  async function pdfToDocx(file) {
+    const text = await extractPdfText(file);
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    return { blob: await buildDocxBlob(text), name: `${baseName}.docx` };
+  }
+
+  /**
+   * @param {File} file
+   * @param {{pdfOutput: 'txt'|'docx'}} opts qué generar cuando el origen es un PDF
+   */
+  async function convertDocument(file, opts = {}) {
     const name = file.name.toLowerCase();
     if (name.endsWith(".pdf") || file.type === "application/pdf") {
-      return pdfToText(file);
+      return opts.pdfOutput === "docx" ? pdfToDocx(file) : pdfToText(file);
+    }
+    if (name.endsWith(".docx")) {
+      return docxToPdf(file);
     }
     if (name.endsWith(".txt") || name.endsWith(".md") || file.type.startsWith("text/")) {
       return textToPdf(file);
     }
-    throw new Error("Formato no soportado. Subí un archivo .txt, .md o .pdf.");
+    throw new Error("Formato no soportado. Subí un archivo .txt, .md, .docx o .pdf.");
   }
 
   async function zipFiles(items, zipName) {

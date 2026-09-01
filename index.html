@@ -90,6 +90,14 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
         Convertidor de documentos
       </button>
+      <button class="tab-btn" data-tab="units" role="tab" aria-selected="false">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        Convertidor de unidades
+      </button>
+      <button class="tab-btn" data-tab="time" role="tab" aria-selected="false">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Convertidor de zona horaria
+      </button>
     </div>
 
     <div class="tool-layout">
@@ -98,10 +106,10 @@
         <!-- Herramienta 0: Comprimir imágenes -->
         <section class="tool-panel active" id="panel-compress">
           <h2>Comprimir imágenes</h2>
-          <p class="panel-desc">Reducí el peso de tus fotos manteniendo buena calidad visual. Ideal para subir a la web, WhatsApp o email.</p>
+          <p class="panel-desc">Reducí el peso de tus fotos (incluye HEIC/HEIF de iPhone) manteniendo buena calidad visual. Ideal para subir a la web, WhatsApp o email.</p>
 
           <div class="dropzone" id="dropzone-compress">
-            <input type="file" id="input-compress" accept="image/*" multiple hidden>
+            <input type="file" id="input-compress" accept="image/*,.heic,.heif" multiple hidden>
             <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
             <p><strong>Arrastrá y soltá</strong> tus imágenes acá</p>
             <p class="muted">o</p>
@@ -132,11 +140,11 @@
 
         <!-- Herramienta 1: Imagen -> Imagen -->
         <section class="tool-panel" id="panel-img2img">
-          <h2>Convertir imágenes (PNG, JPG, WEBP)</h2>
-          <p class="panel-desc">Subí una o varias imágenes y elegí el formato de salida.</p>
+          <h2>Convertir imágenes (PNG, JPG, WEBP, SVG)</h2>
+          <p class="panel-desc">Subí una o varias imágenes (también podés subir HEIC/HEIF de iPhone, WEBP, JFIF o SVG) y elegí el formato de salida.</p>
 
           <div class="dropzone" id="dropzone-img2img">
-            <input type="file" id="input-img2img" accept="image/*" multiple hidden>
+            <input type="file" id="input-img2img" accept="image/*,.heic,.heif" multiple hidden>
             <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
             <p><strong>Arrastrá y soltá</strong> tus imágenes acá</p>
             <p class="muted">o</p>
@@ -150,6 +158,7 @@
                 <option value="image/png">PNG</option>
                 <option value="image/jpeg" selected>JPG</option>
                 <option value="image/webp">WEBP</option>
+                <option value="image/svg+xml">SVG (imagen incrustada)</option>
               </select>
             </label>
             <label id="img2img-quality-wrap">
@@ -169,7 +178,7 @@
           <p class="panel-desc">Subí una o varias imágenes; se combinarán en un único PDF respetando el orden de selección.</p>
 
           <div class="dropzone" id="dropzone-img2pdf">
-            <input type="file" id="input-img2pdf" accept="image/*" multiple hidden>
+            <input type="file" id="input-img2pdf" accept="image/*,.heic,.heif" multiple hidden>
             <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
             <p><strong>Arrastrá y soltá</strong> tus imágenes acá</p>
             <p class="muted">o</p>
@@ -238,12 +247,12 @@
         <!-- Herramienta 4: Audio -->
         <section class="tool-panel" id="panel-audio">
           <h2>Convertidor de audio</h2>
-          <p class="panel-desc">Convertí audio a WAV o MP3. Funciona con lo que tu navegador pueda reproducir (MP3, WAV, OGG, M4A/AAC).</p>
+          <p class="panel-desc">Convertí audio a WAV o MP3. También podés subir un video (MP4, MOV, WEBM) para extraer su audio. Funciona con lo que tu navegador pueda reproducir.</p>
 
           <div class="dropzone" id="dropzone-audio">
-            <input type="file" id="input-audio" accept="audio/*" multiple hidden>
+            <input type="file" id="input-audio" accept="audio/*,video/*" multiple hidden>
             <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
-            <p><strong>Arrastrá y soltá</strong> tus archivos de audio acá</p>
+            <p><strong>Arrastrá y soltá</strong> tu audio o video acá</p>
             <p class="muted">o</p>
             <button type="button" class="btn btn-secondary" data-trigger="input-audio">Elegir archivos</button>
           </div>
@@ -296,10 +305,10 @@
         <!-- Herramienta 6: Documentos -->
         <section class="tool-panel" id="panel-document">
           <h2>Convertidor de documentos</h2>
-          <p class="panel-desc">Convertí un .txt en PDF, o extraé el texto de un PDF a un archivo .txt. Detecta automáticamente la dirección según el archivo que subas.</p>
+          <p class="panel-desc">Convertí .txt/.md/.docx a PDF, o un PDF a texto o Word. Detecta automáticamente la dirección según el archivo que subas (el resultado de Word/PDF es solo texto, sin conservar formato avanzado).</p>
 
           <div class="dropzone" id="dropzone-document">
-            <input type="file" id="input-document" accept=".txt,.md,.pdf" multiple hidden>
+            <input type="file" id="input-document" accept=".txt,.md,.pdf,.docx" multiple hidden>
             <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
             <p><strong>Arrastrá y soltá</strong> tus archivos acá</p>
             <p class="muted">o</p>
@@ -307,12 +316,73 @@
           </div>
 
           <div class="options-row options-row--center">
-            <span class="options-hint">La dirección de la conversión (.txt/.md → PDF, o PDF → .txt) se detecta automáticamente.</span>
+            <label>
+              Si subís un PDF, generar
+              <select id="document-pdf-output">
+                <option value="txt" selected>Texto (.txt)</option>
+                <option value="docx">Word (.docx)</option>
+              </select>
+            </label>
             <button class="btn btn-primary" id="btn-document-convert" disabled>Convertir</button>
           </div>
 
           <ul class="file-list" id="document-filelist"></ul>
           <div class="results" id="document-results"></div>
+        </section>
+
+        <!-- Herramienta 7: Convertidor de unidades -->
+        <section class="tool-panel" id="panel-units">
+          <h2>Convertidor de unidades</h2>
+          <p class="panel-desc">Convertí longitudes, pesos, volúmenes y temperaturas al instante.</p>
+
+          <div class="options-row options-row--center">
+            <label>
+              Categoría
+              <select id="units-category">
+                <option value="longitud">Longitud</option>
+                <option value="peso">Peso</option>
+                <option value="volumen">Volumen</option>
+                <option value="temperatura">Temperatura</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="units-converter">
+            <div class="units-side">
+              <label for="units-input-value">Valor</label>
+              <input type="number" id="units-input-value" value="1">
+              <select id="units-input-unit"></select>
+            </div>
+            <button type="button" class="btn btn-secondary units-swap" id="units-swap" aria-label="Invertir unidades">⇄</button>
+            <div class="units-side">
+              <label for="units-output-value">Resultado</label>
+              <input type="text" id="units-output-value" readonly>
+              <select id="units-output-unit"></select>
+            </div>
+          </div>
+        </section>
+
+        <!-- Herramienta 8: Convertidor de zona horaria -->
+        <section class="tool-panel" id="panel-time">
+          <h2>Convertidor de zona horaria</h2>
+          <p class="panel-desc">Convertí una fecha y hora entre distintas zonas horarias del mundo.</p>
+
+          <div class="options-row">
+            <label>
+              Fecha y hora
+              <input type="datetime-local" id="time-input">
+            </label>
+            <label>
+              Zona de origen
+              <select id="time-from-zone"></select>
+            </label>
+            <label>
+              Zona de destino
+              <select id="time-to-zone"></select>
+            </label>
+          </div>
+
+          <div class="time-result" id="time-result"></div>
         </section>
 
       </div>
@@ -411,6 +481,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 
 <script src="assets/js/converters.js"></script>
 <script src="assets/js/main.js"></script>

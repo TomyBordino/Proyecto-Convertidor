@@ -2,6 +2,12 @@
 
 document.getElementById("year").textContent = new Date().getFullYear();
 
+// Muchos navegadores no le asignan un MIME type a los archivos HEIC/HEIF
+// (file.type queda vacío), así que además revisamos la extensión.
+function isImageFile(file) {
+  return file.type.startsWith("image/") || /\.(heic|heif)$/i.test(file.name);
+}
+
 // ---------- Tabs ----------
 const tabButtons = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tool-panel");
@@ -215,7 +221,7 @@ function renderPdfResult(container, item) {
   qualityInput.addEventListener("input", () => (qualityVal.textContent = qualityInput.value));
 
   setupDropzone("dropzone-compress", "input-compress", (files) => {
-    selectedFiles = files.filter((f) => f.type.startsWith("image/"));
+    selectedFiles = files.filter((f) => isImageFile(f));
     renderFileList(fileListEl, selectedFiles);
     convertBtn.disabled = selectedFiles.length === 0;
     resultsEl.innerHTML = "";
@@ -264,7 +270,7 @@ function renderPdfResult(container, item) {
   qualityInput.addEventListener("input", () => (qualityVal.textContent = qualityInput.value));
 
   setupDropzone("dropzone-img2img", "input-img2img", (files) => {
-    selectedFiles = files.filter((f) => f.type.startsWith("image/"));
+    selectedFiles = files.filter((f) => isImageFile(f));
     renderFileList(fileListEl, selectedFiles);
     convertBtn.disabled = selectedFiles.length === 0;
     resultsEl.innerHTML = "";
@@ -303,7 +309,7 @@ function renderPdfResult(container, item) {
   const orientationSelect = document.getElementById("img2pdf-orientation");
 
   setupDropzone("dropzone-img2pdf", "input-img2pdf", (files) => {
-    selectedFiles = files.filter((f) => f.type.startsWith("image/"));
+    selectedFiles = files.filter((f) => isImageFile(f));
     renderFileList(fileListEl, selectedFiles);
     convertBtn.disabled = selectedFiles.length === 0;
     resultsEl.innerHTML = "";
@@ -386,7 +392,7 @@ function renderPdfResult(container, item) {
   updateBitrateVisibility();
 
   setupDropzone("dropzone-audio", "input-audio", (files) => {
-    selectedFiles = files.filter((f) => f.type.startsWith("audio/"));
+    selectedFiles = files.filter((f) => f.type.startsWith("audio/") || f.type.startsWith("video/"));
     renderFileList(fileListEl, selectedFiles);
     convertBtn.disabled = selectedFiles.length === 0;
     resultsEl.innerHTML = "";
@@ -455,6 +461,7 @@ function renderPdfResult(container, item) {
   const fileListEl = document.getElementById("document-filelist");
   const convertBtn = document.getElementById("btn-document-convert");
   const resultsEl = document.getElementById("document-results");
+  const pdfOutputSelect = document.getElementById("document-pdf-output");
 
   setupDropzone("dropzone-document", "input-document", (files) => {
     selectedFiles = files;
@@ -468,9 +475,10 @@ function renderPdfResult(container, item) {
     convertBtn.textContent = "Convirtiendo...";
     resultsEl.innerHTML = "";
     try {
+      const opts = { pdfOutput: pdfOutputSelect.value };
       const results = [];
       for (const file of selectedFiles) {
-        results.push(await Converters.convertDocument(file));
+        results.push(await Converters.convertDocument(file, opts));
       }
       renderFileResults(resultsEl, results, { zipName: "documentos-convertidos.zip" });
     } catch (err) {
@@ -480,4 +488,208 @@ function renderPdfResult(container, item) {
       convertBtn.textContent = "Convertir";
     }
   });
+})();
+
+// ============================================================
+// Herramienta 7: Convertidor de unidades
+// ============================================================
+(() => {
+  const UNIT_CATEGORIES = {
+    longitud: {
+      base: "m",
+      units: {
+        mm: { label: "Milímetros (mm)", factor: 0.001 },
+        cm: { label: "Centímetros (cm)", factor: 0.01 },
+        m: { label: "Metros (m)", factor: 1 },
+        km: { label: "Kilómetros (km)", factor: 1000 },
+        in: { label: "Pulgadas (in)", factor: 0.0254 },
+        ft: { label: "Pies (ft)", factor: 0.3048 },
+        yd: { label: "Yardas (yd)", factor: 0.9144 },
+        mi: { label: "Millas (mi)", factor: 1609.344 },
+      },
+    },
+    peso: {
+      base: "kg",
+      units: {
+        mg: { label: "Miligramos (mg)", factor: 0.000001 },
+        g: { label: "Gramos (g)", factor: 0.001 },
+        kg: { label: "Kilogramos (kg)", factor: 1 },
+        ton: { label: "Toneladas (t)", factor: 1000 },
+        oz: { label: "Onzas (oz)", factor: 0.0283495 },
+        lb: { label: "Libras (lb)", factor: 0.453592 },
+      },
+    },
+    volumen: {
+      base: "l",
+      units: {
+        ml: { label: "Mililitros (ml)", factor: 0.001 },
+        l: { label: "Litros (l)", factor: 1 },
+        m3: { label: "Metros cúbicos (m³)", factor: 1000 },
+        gal: { label: "Galones US (gal)", factor: 3.78541 },
+        qt: { label: "Cuartos US (qt)", factor: 0.946353 },
+        floz: { label: "Onzas líquidas US (fl oz)", factor: 0.0295735 },
+      },
+    },
+    temperatura: {
+      special: true,
+      units: {
+        c: { label: "Celsius (°C)" },
+        f: { label: "Fahrenheit (°F)" },
+        k: { label: "Kelvin (K)" },
+      },
+    },
+  };
+
+  function toCelsius(value, unit) {
+    if (unit === "c") return value;
+    if (unit === "f") return ((value - 32) * 5) / 9;
+    return value - 273.15; // kelvin
+  }
+  function fromCelsius(celsius, unit) {
+    if (unit === "c") return celsius;
+    if (unit === "f") return (celsius * 9) / 5 + 32;
+    return celsius + 273.15; // kelvin
+  }
+
+  function convertUnit(value, category, fromUnit, toUnit) {
+    const def = UNIT_CATEGORIES[category];
+    if (def.special) {
+      return fromCelsius(toCelsius(value, fromUnit), toUnit);
+    }
+    const baseValue = value * def.units[fromUnit].factor;
+    return baseValue / def.units[toUnit].factor;
+  }
+
+  const categorySelect = document.getElementById("units-category");
+  const inputValue = document.getElementById("units-input-value");
+  const inputUnit = document.getElementById("units-input-unit");
+  const outputValue = document.getElementById("units-output-value");
+  const outputUnit = document.getElementById("units-output-unit");
+  const swapBtn = document.getElementById("units-swap");
+
+  function populateUnitSelects() {
+    const def = UNIT_CATEGORIES[categorySelect.value];
+    const unitKeys = Object.keys(def.units);
+    const optionsHtml = unitKeys.map((key) => `<option value="${key}">${def.units[key].label}</option>`).join("");
+    inputUnit.innerHTML = optionsHtml;
+    outputUnit.innerHTML = optionsHtml;
+    inputUnit.value = unitKeys[0];
+    outputUnit.value = unitKeys[1] || unitKeys[0];
+  }
+
+  function recalculate() {
+    const value = Number(inputValue.value);
+    if (Number.isNaN(value)) {
+      outputValue.value = "";
+      return;
+    }
+    const result = convertUnit(value, categorySelect.value, inputUnit.value, outputUnit.value);
+    outputValue.value = Number(result.toFixed(6)).toString();
+  }
+
+  categorySelect.addEventListener("change", () => {
+    populateUnitSelects();
+    recalculate();
+  });
+  [inputValue, inputUnit, outputUnit].forEach((el) => el.addEventListener("input", recalculate));
+
+  swapBtn.addEventListener("click", () => {
+    const tmp = inputUnit.value;
+    inputUnit.value = outputUnit.value;
+    outputUnit.value = tmp;
+    recalculate();
+  });
+
+  populateUnitSelects();
+  recalculate();
+})();
+
+// ============================================================
+// Herramienta 8: Convertidor de zona horaria
+// ============================================================
+(() => {
+  const TIME_ZONES = [
+    "America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York",
+    "America/Mexico_City", "America/Bogota", "America/Lima", "America/Santiago",
+    "America/Argentina/Buenos_Aires", "America/Sao_Paulo",
+    "UTC",
+    "Europe/London", "Europe/Madrid", "Europe/Paris", "Europe/Berlin", "Europe/Rome", "Europe/Moscow",
+    "Africa/Cairo", "Africa/Johannesburg",
+    "Asia/Dubai", "Asia/Karachi", "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok",
+    "Asia/Shanghai", "Asia/Tokyo", "Asia/Seoul", "Asia/Singapore",
+    "Australia/Sydney", "Pacific/Auckland",
+  ];
+
+  const dateInput = document.getElementById("time-input");
+  const fromZoneSelect = document.getElementById("time-from-zone");
+  const toZoneSelect = document.getElementById("time-to-zone");
+  const resultEl = document.getElementById("time-result");
+
+  function nowAsLocalInputValue() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function populateZoneSelect(select) {
+    select.innerHTML = TIME_ZONES.map((tz) => `<option value="${tz}">${tz.replace(/_/g, " ")}</option>`).join("");
+  }
+
+  // Convierte una fecha/hora "naive" (sin zona) interpretada en `timeZone`
+  // al instante UTC real, usando solo la API Intl (sin librerías externas).
+  function zonedTimeToUtc(localValue, timeZone) {
+    const [datePart, timePart] = localValue.split("T");
+    const [y, mo, d] = datePart.split("-").map(Number);
+    const [h, mi] = timePart.split(":").map(Number);
+    const guess = Date.UTC(y, mo - 1, d, h, mi, 0);
+
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    const parts = {};
+    dtf.formatToParts(new Date(guess)).forEach((p) => (parts[p.type] = p.value));
+    const hour = Number(parts.hour) === 24 ? 0 : Number(parts.hour);
+    const asIfUtcAgain = Date.UTC(
+      Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      hour, Number(parts.minute), Number(parts.second)
+    );
+    return guess - (asIfUtcAgain - guess);
+  }
+
+  function formatInZone(utcMillis, timeZone) {
+    return new Intl.DateTimeFormat("es-AR", {
+      timeZone,
+      dateStyle: "full",
+      timeStyle: "short",
+    }).format(new Date(utcMillis));
+  }
+
+  function recalculate() {
+    if (!dateInput.value) {
+      resultEl.textContent = "";
+      return;
+    }
+    const utcMillis = zonedTimeToUtc(dateInput.value, fromZoneSelect.value);
+    resultEl.textContent = formatInZone(utcMillis, toZoneSelect.value);
+  }
+
+  populateZoneSelect(fromZoneSelect);
+  populateZoneSelect(toZoneSelect);
+  dateInput.value = nowAsLocalInputValue();
+
+  const detectedZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (TIME_ZONES.includes(detectedZone)) {
+    fromZoneSelect.value = detectedZone;
+  }
+  toZoneSelect.value = TIME_ZONES.find((tz) => tz !== fromZoneSelect.value) || TIME_ZONES[0];
+
+  [dateInput, fromZoneSelect, toZoneSelect].forEach((el) => el.addEventListener("input", recalculate));
+  recalculate();
 })();
