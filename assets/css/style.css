@@ -434,8 +434,14 @@ a:hover { color: var(--color-primary-dark); }
   font-weight: 600;
   color: var(--color-text-muted);
   word-break: break-all;
+  margin-bottom: 6px;
+}
+.result-card .result-savings {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
   margin-bottom: 10px;
 }
+.result-card .result-savings strong { color: var(--color-success); }
 .results-toolbar {
   grid-column: 1 / -1;
   display: flex;

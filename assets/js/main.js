@@ -110,6 +110,46 @@ function renderImageResults(container, items, { zipName }) {
   });
 }
 
+function renderCompressResults(container, items, { zipName }) {
+  container.innerHTML = "";
+
+  if (items.length > 1) {
+    const toolbar = document.createElement("div");
+    toolbar.className = "results-toolbar";
+    const zipBtn = document.createElement("button");
+    zipBtn.className = "btn btn-secondary";
+    zipBtn.textContent = "Descargar todo (.zip)";
+    zipBtn.addEventListener("click", async () => {
+      zipBtn.disabled = true;
+      zipBtn.textContent = "Comprimiendo...";
+      const zip = await Converters.zipFiles(items, zipName);
+      downloadBlob(zip.blob, zip.name);
+      zipBtn.disabled = false;
+      zipBtn.textContent = "Descargar todo (.zip)";
+    });
+    toolbar.appendChild(zipBtn);
+    container.appendChild(toolbar);
+  }
+
+  items.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "result-card";
+    const url = URL.createObjectURL(item.blob);
+    const reduction = Math.max(0, Math.round((1 - item.blob.size / item.originalSize) * 100));
+    card.innerHTML = `
+      <img src="${url}" alt="${item.name}">
+      <div class="result-name">${item.name}</div>
+      <div class="result-savings">${Converters.formatBytes(item.originalSize)} → ${Converters.formatBytes(item.blob.size)} <strong>(-${reduction}%)</strong></div>
+    `;
+    const btn = document.createElement("button");
+    btn.className = "btn btn-download";
+    btn.textContent = "Descargar";
+    btn.addEventListener("click", () => downloadBlob(item.blob, item.name));
+    card.appendChild(btn);
+    container.appendChild(card);
+  });
+}
+
 function renderPdfResult(container, item) {
   container.innerHTML = "";
   const card = document.createElement("div");
@@ -122,6 +162,48 @@ function renderPdfResult(container, item) {
   card.appendChild(btn);
   container.appendChild(card);
 }
+
+// ============================================================
+// Herramienta 0: Comprimir imágenes
+// ============================================================
+(() => {
+  let selectedFiles = [];
+  const fileListEl = document.getElementById("compress-filelist");
+  const convertBtn = document.getElementById("btn-compress-convert");
+  const resultsEl = document.getElementById("compress-results");
+  const qualityInput = document.getElementById("compress-quality");
+  const qualityVal = document.getElementById("compress-quality-val");
+  const maxWidthSelect = document.getElementById("compress-maxwidth");
+
+  qualityInput.addEventListener("input", () => (qualityVal.textContent = qualityInput.value));
+
+  setupDropzone("dropzone-compress", "input-compress", (files) => {
+    selectedFiles = files.filter((f) => f.type.startsWith("image/"));
+    renderFileList(fileListEl, selectedFiles);
+    convertBtn.disabled = selectedFiles.length === 0;
+    resultsEl.innerHTML = "";
+  });
+
+  convertBtn.addEventListener("click", async () => {
+    convertBtn.disabled = true;
+    convertBtn.textContent = "Comprimiendo...";
+    resultsEl.innerHTML = "";
+    try {
+      const quality = Number(qualityInput.value) / 100;
+      const maxWidth = Number(maxWidthSelect.value);
+      const results = [];
+      for (const file of selectedFiles) {
+        results.push(await Converters.compressImage(file, { quality, maxWidth }));
+      }
+      renderCompressResults(resultsEl, results, { zipName: "imagenes-comprimidas.zip" });
+    } catch (err) {
+      alert("Ocurrió un error: " + err.message);
+    } finally {
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Comprimir";
+    }
+  });
+})();
 
 // ============================================================
 // Herramienta 1: Imagen -> Imagen

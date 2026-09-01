@@ -166,6 +166,53 @@ const Converters = (() => {
     return results;
   }
 
+  /**
+   * Comprime una imagen re-codificándola con pérdida y, opcionalmente,
+   * reduciendo sus dimensiones. Los JPG se mantienen como JPG; el resto
+   * (PNG, GIF, etc.) se exporta como WEBP, que comprime mucho mejor y
+   * conserva la transparencia.
+   * @param {File} file
+   * @param {{quality: number, maxWidth: number}} opts quality 0..1, maxWidth en px (0 = sin límite)
+   */
+  async function compressImage(file, opts) {
+    const { img, url } = await loadImage(file);
+    try {
+      let targetW = img.naturalWidth;
+      let targetH = img.naturalHeight;
+      if (opts.maxWidth && targetW > opts.maxWidth) {
+        const scale = opts.maxWidth / targetW;
+        targetW = Math.round(targetW * scale);
+        targetH = Math.round(targetH * scale);
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext("2d");
+
+      const outputMime = file.type === "image/jpeg" ? "image/jpeg" : "image/webp";
+      if (outputMime === "image/jpeg") {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error("Compresión fallida"))),
+          outputMime,
+          opts.quality
+        );
+      });
+
+      const baseName = file.name.replace(/\.[^.]+$/, "");
+      const ext = outputMime === "image/jpeg" ? "jpg" : "webp";
+      return { blob, name: `${baseName}-comprimido.${ext}`, originalSize: file.size };
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
   async function zipFiles(items, zipName) {
     const zip = new JSZip();
     for (const item of items) {
@@ -182,5 +229,5 @@ const Converters = (() => {
     return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
   }
 
-  return { convertImage, imagesToPdf, pdfToImages, zipFiles, formatBytes };
+  return { convertImage, compressImage, imagesToPdf, pdfToImages, zipFiles, formatBytes };
 })();
