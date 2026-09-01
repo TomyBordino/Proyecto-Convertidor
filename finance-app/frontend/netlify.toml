@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# La app usa react-router en modo BrowserRouter (rutas como /us/AAPL/analisis),
+# asi que cualquier ruta que no sea un archivo estatico debe resolver a index.html
+# para que el router del lado del cliente la tome.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

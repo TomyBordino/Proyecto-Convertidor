@@ -63,6 +63,57 @@ npm install
 npm run dev         # http://localhost:5173
 ```
 
+## Deploy: backend en Render + frontend en Netlify
+
+El backend necesita un servidor Node persistente (usa `app.listen` y cache en
+memoria), asi que va en Render. El frontend es un build estatico, asi que va
+en Netlify. Hay que desplegar el backend primero para tener su URL.
+
+### 1. Backend en Render
+
+**Opción A — Blueprint (usa `render.yaml` en la raiz del repo):**
+En Render, "New" → "Blueprint" → conectar este repositorio. Detecta
+`render.yaml` y crea el servicio `finance-app-backend` apuntando a
+`finance-app/backend`.
+
+**Opción B — a mano:** "New" → "Web Service" → conectar el repo →
+- Root Directory: `finance-app/backend`
+- Build Command: `npm install && npm run build`
+- Start Command: `npm start`
+
+En cualquiera de las dos, configurá en el servicio (Environment):
+- `CORS_ORIGIN`: la URL que te de Netlify en el paso 2 (podés dejarlo con el
+  valor por defecto y actualizarlo despues del primer deploy del frontend).
+- `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`: opcional, solo si querés narrativa
+  generada por un modelo real en vez de la heuristica.
+
+Render te da una URL tipo `https://finance-app-backend.onrender.com`;
+guardala para el paso 2. (El plan free "duerme" el servicio sin trafico: la
+primera request luego de inactividad puede tardar unos segundos en responder.)
+
+### 2. Frontend en Netlify
+
+"Add new site" → "Import an existing project" → conectar el repo →
+- Base directory: `finance-app/frontend`
+- Build command: `npm run build` (ya viene en `netlify.toml`)
+- Publish directory: `dist` (ya viene en `netlify.toml`)
+
+Antes de buildear, configurá la variable de entorno del sitio en Netlify
+(Site configuration → Environment variables):
+- `VITE_API_BASE_URL`: la URL de Render del paso 1
+  (ej. `https://finance-app-backend.onrender.com`).
+
+Como Vite inyecta las variables `VITE_*` en build time, si la agregás
+despues del primer deploy hay que disparar un "Trigger deploy" de nuevo
+para que tome el valor.
+
+### 3. Cerrar el circulo (CORS)
+
+Una vez que Netlify te da su URL final (ej.
+`https://tu-sitio.netlify.app`), volvé a Render y actualizá `CORS_ORIGIN`
+con esa URL exacta, y hacé un "Manual Deploy" para que el backend acepte
+requests desde el frontend en producción.
+
 ## Variables de entorno
 
 **Backend** (`finance-app/backend/.env`, ver `.env.example`):

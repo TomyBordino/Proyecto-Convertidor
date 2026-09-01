@@ -1,0 +1,21 @@
+# Blueprint de Render para el backend de finance-app (finance-app/backend).
+# No afecta al resto del repositorio: solo se usa si conectas este repo en
+# Render como "New Blueprint Instance". Tambien se puede crear el servicio a
+# mano (ver finance-app/README.md), sin usar este archivo.
+services:
+  - type: web
+    name: finance-app-backend
+    runtime: node
+    rootDir: finance-app/backend
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: CORS_ORIGIN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        sync: false
+      - key: DATA912_BASE_URL
+        sync: false
