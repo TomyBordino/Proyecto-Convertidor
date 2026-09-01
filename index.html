@@ -6,6 +6,9 @@
 <title>ConvertiYa — Convertidor de Archivos Online Gratis</title>
 <meta name="description" content="Convierte imágenes entre PNG, JPG y WEBP, transforma imágenes a PDF y extrae imágenes de un PDF. Todo gratis, rápido y directamente en tu navegador.">
 <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css">
 
 <!-- ============================================================
@@ -46,16 +49,31 @@
 
 <main>
   <section class="hero container">
-    <h1>Convertí tus archivos gratis, rápido y sin instalar nada</h1>
+    <span class="hero-badge">✨ 100% gratis · sin registro</span>
+    <h1>Convertí tus archivos <span class="accent">gratis y al instante</span>, sin instalar nada</h1>
     <p>Todo el procesamiento ocurre en tu propio navegador: tus archivos <strong>nunca se suben a ningún servidor</strong>, así que es privado y funciona al instante.</p>
+    <div class="hero-trust">
+      <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg> 100% privado</span>
+      <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg> Sin instalar nada</span>
+      <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg> Resultados al instante</span>
+    </div>
   </section>
 
   <section id="herramientas" class="tools container">
 
     <div class="tabs" role="tablist">
-      <button class="tab-btn active" data-tab="img2img" role="tab" aria-selected="true">Convertir imágenes</button>
-      <button class="tab-btn" data-tab="img2pdf" role="tab" aria-selected="false">Imágenes a PDF</button>
-      <button class="tab-btn" data-tab="pdf2img" role="tab" aria-selected="false">PDF a imágenes</button>
+      <button class="tab-btn active" data-tab="img2img" role="tab" aria-selected="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        Convertir imágenes
+      </button>
+      <button class="tab-btn" data-tab="img2pdf" role="tab" aria-selected="false">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        Imágenes a PDF
+      </button>
+      <button class="tab-btn" data-tab="pdf2img" role="tab" aria-selected="false">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><circle cx="10" cy="15" r="2"/><path d="m14 19-2.5-2.5"/></svg>
+        PDF a imágenes
+      </button>
     </div>
 
     <div class="tool-layout">
@@ -68,6 +86,7 @@
 
           <div class="dropzone" id="dropzone-img2img">
             <input type="file" id="input-img2img" accept="image/*" multiple hidden>
+            <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
             <p><strong>Arrastrá y soltá</strong> tus imágenes acá</p>
             <p class="muted">o</p>
             <button type="button" class="btn btn-secondary" data-trigger="input-img2img">Elegir archivos</button>
@@ -83,7 +102,7 @@
               </select>
             </label>
             <label id="img2img-quality-wrap">
-              Calidad (<span id="img2img-quality-val">90</span>%)
+              <span>Calidad (<span id="img2img-quality-val">90</span>%)</span>
               <input type="range" id="img2img-quality" min="10" max="100" value="90">
             </label>
             <button class="btn btn-primary" id="btn-img2img-convert" disabled>Convertir</button>
@@ -100,6 +119,7 @@
 
           <div class="dropzone" id="dropzone-img2pdf">
             <input type="file" id="input-img2pdf" accept="image/*" multiple hidden>
+            <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
             <p><strong>Arrastrá y soltá</strong> tus imágenes acá</p>
             <p class="muted">o</p>
             <button type="button" class="btn btn-secondary" data-trigger="input-img2pdf">Elegir archivos</button>
@@ -135,6 +155,7 @@
 
           <div class="dropzone" id="dropzone-pdf2img">
             <input type="file" id="input-pdf2img" accept="application/pdf" hidden>
+            <div class="dropzone-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></div>
             <p><strong>Arrastrá y soltá</strong> tu PDF acá</p>
             <p class="muted">o</p>
             <button type="button" class="btn btn-secondary" data-trigger="input-pdf2img">Elegir archivo</button>
@@ -204,7 +225,7 @@
       <div class="step">
         <span class="step-num">2</span>
         <h3>Subí tus archivos</h3>
-        <p>Arrastralos a la zona indicada o seleccionalós manualmente.</p>
+        <p>Arrastralos a la zona indicada o seleccionalos manualmente.</p>
       </div>
       <div class="step">
         <span class="step-num">3</span>

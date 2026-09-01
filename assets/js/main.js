@@ -29,7 +29,7 @@ function setupDropzone(dropzoneId, inputId, onFilesSelected) {
   if (triggerBtn) triggerBtn.addEventListener("click", () => input.click());
 
   dropzone.addEventListener("click", (e) => {
-    if (e.target === dropzone || e.target.tagName === "P") input.click();
+    if (!e.target.closest("button")) input.click();
   });
 
   input.addEventListener("change", () => onFilesSelected(Array.from(input.files)));
