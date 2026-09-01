@@ -1,4 +1,1 @@
-# Reemplazá la línea de abajo con el snippet real que te da tu cuenta de
-# Google AdSense (Sitios > Configuración > ads.txt) una vez aprobada.
-# Ejemplo de formato:
-# google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+google.com, pub-3035142487368808, DIRECT, f08c47fec0942fa0
