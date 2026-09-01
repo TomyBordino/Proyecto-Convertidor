@@ -101,9 +101,48 @@ alternativas mientras generás tráfico: Media.net, Ezoic o PropellerAds. La
 integración es similar: reemplazar los bloques `<ins class="adsbygoogle">`
 por el snippet que te dé la red elegida.
 
+## SEO
+
+Ya implementado:
+
+- `robots.txt` y `sitemap.xml` en la raíz del sitio.
+- `<title>` y meta descripción optimizados con palabras clave, en cada página.
+- `<link rel="canonical">` en todas las páginas.
+- Open Graph y Twitter Card para que se vea bien al compartir en redes.
+- Datos estructurados (JSON-LD) `WebApplication` y `FAQPage` en `index.html`
+  — esto habilita resultados enriquecidos (rich snippets) en Google. **Importante:**
+  si editás el FAQ visible, el texto tiene que coincidir exactamente con el
+  JSON-LD del `<head>`, o Google puede dejar de mostrar el rich snippet.
+- Descripciones de cada herramienta reescritas con términos de búsqueda reales
+  (ej. "PDF a Word", "HEIC a JPG", "Celsius a Fahrenheit").
+
+### Pasos manuales que solo vos podés hacer
+
+1. **Dar de alta el sitio en [Google Search Console](https://search.google.com/search-console)**
+   y enviar `https://convertiya.netlify.app/sitemap.xml` — esto acelera muchísimo
+   que Google empiece a indexar el sitio.
+2. Ídem en [Bing Webmaster Tools](https://www.bing.com/webmasters).
+3. Conseguir **backlinks**: publicalo en foros, Reddit, directorios de herramientas
+   gratuitas ("free tools directories"), y compartilo en redes. Los backlinks
+   siguen siendo uno de los factores de ranking más importantes.
+4. Considerar comprar un dominio propio (ej. `convertiya.com`) — genera más
+   confianza que un subdominio de `.netlify.app`, tanto para SEO como para la
+   aprobación de AdSense.
+
+### La mejora más grande pendiente
+
+Ahora mismo las 9 herramientas viven todas en pestañas dentro de una sola
+URL (`index.html`). Eso limita cuánto puede posicionar cada una por separado:
+una búsqueda de "comprimir imagen online" y otra de "pdf a word gratis"
+compiten por la misma página. El siguiente paso de mayor impacto sería crear
+una URL/landing page dedicada por herramienta (ej. `/comprimir-imagenes`,
+`/pdf-a-word`), cada una con su propio título, meta descripción y contenido
+enfocado en esa conversión puntual, mientras reutilizan el mismo motor de
+conversión (`assets/js/converters.js`). Es el patrón que usan Smallpdf,
+iLovePDF o Convertio.
+
 ## Próximos pasos sugeridos
 
-- Agregar más conversiones (ej. audio, video, comprimir imágenes).
 - Agregar Google Analytics para medir tráfico.
 - Comprar un dominio propio (mejora la aprobación y confianza de AdSense).
 - Completar `[COMPLETAR FECHA]` y `[COMPLETAR EMAIL DE CONTACTO]` en

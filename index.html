@@ -3,13 +3,128 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ConvertiYa — Comprimir y Convertir Archivos Online Gratis</title>
-<meta name="description" content="Comprimí imágenes, convertí entre PNG, JPG y WEBP, transformá imágenes a PDF y extraé imágenes de un PDF. Todo gratis, rápido y directamente en tu navegador.">
+<title>ConvertiYa — Comprimir Imágenes y Convertir Archivos Gratis</title>
+<meta name="description" content="Herramientas gratis para comprimir imágenes, convertir HEIC/PDF/audio/fuentes y más — todo 100% en tu navegador, sin subir archivos a ningún servidor.">
+<link rel="canonical" href="https://convertiya.netlify.app/">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph / redes sociales -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ConvertiYa">
+<meta property="og:title" content="ConvertiYa — Comprimir Imágenes y Convertir Archivos Gratis">
+<meta property="og:description" content="Herramientas gratis para comprimir imágenes, convertir HEIC/PDF/audio/fuentes y más — todo 100% en tu navegador, sin subir archivos a ningún servidor.">
+<meta property="og:url" content="https://convertiya.netlify.app/">
+<meta property="og:locale" content="es_AR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="ConvertiYa — Comprimir Imágenes y Convertir Archivos Gratis">
+<meta name="twitter:description" content="Herramientas gratis para comprimir imágenes, convertir HEIC/PDF/audio/fuentes y más — todo 100% en tu navegador.">
+
 <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css">
+
+<!-- Datos estructurados: describe la app y el FAQ para resultados enriquecidos en Google -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ConvertiYa",
+  "url": "https://convertiya.netlify.app/",
+  "description": "Herramientas gratis para comprimir imágenes, convertir imágenes (incluye HEIC), PDF, audio, fuentes y documentos, además de convertidores de unidades y zona horaria. Todo se procesa en el navegador, sin subir archivos a ningún servidor.",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Cualquiera (funciona en el navegador)",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "featureList": [
+    "Comprimir imágenes",
+    "Convertir imágenes (PNG, JPG, WEBP, SVG, HEIC/HEIF)",
+    "Imágenes a PDF",
+    "PDF a imágenes",
+    "Convertidor de audio (incluye extraer audio de video)",
+    "Convertidor de fuentes (TTF/OTF/WOFF)",
+    "Convertidor de documentos (TXT/DOCX/PDF)",
+    "Convertidor de unidades",
+    "Convertidor de zona horaria"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "¿Mis archivos se suben a un servidor?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Todas las conversiones se procesan localmente en tu navegador usando JavaScript. Tus archivos nunca salen de tu computadora."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Tiene algún costo?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No, el servicio es completamente gratuito. Se sostiene gracias a los anuncios que ves en la página."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Hay límite de tamaño de archivo?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "El límite depende de la memoria de tu navegador. Para archivos muy grandes (cientos de MB) el proceso puede ser más lento."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Puedo convertir fotos HEIC de iPhone a JPG?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sí. ConvertiYa detecta automáticamente archivos HEIC/HEIF y los convierte a JPG o PNG desde las herramientas de Comprimir imágenes o Convertir imágenes, sin instalar nada."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Cómo comprimo una imagen sin perder calidad?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Usá la herramienta Comprimir imágenes y ajustá el control de calidad y el ancho máximo. Con 75-85% de calidad normalmente no se nota diferencia visual, pero el archivo pesa mucho menos."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Puedo convertir un PDF a Word gratis?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sí. En el Convertidor de documentos subí tu PDF y elegí \"Word (.docx)\" como salida. Extrae el texto del PDF, sin conservar diseño o formato avanzado."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿ConvertiYa funciona en el celular?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Sí, ConvertiYa es 100% responsive y funciona en cualquier navegador moderno de celular, tablet o computadora, sin instalar ninguna app."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "¿Necesito registrarme para usar ConvertiYa?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. No pedimos registro, email ni datos personales para usar ninguna de las herramientas."
+      }
+    }
+  ]
+}
+</script>
 
 <!-- ============================================================
      GOOGLE ADSENSE — script de verificación / auto ads
@@ -175,7 +290,7 @@
         <!-- Herramienta 2: Imagenes -> PDF -->
         <section class="tool-panel" id="panel-img2pdf">
           <h2>Convertir imágenes a PDF</h2>
-          <p class="panel-desc">Subí una o varias imágenes; se combinarán en un único PDF respetando el orden de selección.</p>
+          <p class="panel-desc">Convertí JPG, PNG, WEBP o HEIC a PDF: subí una o varias imágenes y se combinarán en un único PDF respetando el orden de selección.</p>
 
           <div class="dropzone" id="dropzone-img2pdf">
             <input type="file" id="input-img2pdf" accept="image/*,.heic,.heif" multiple hidden>
@@ -211,7 +326,7 @@
         <!-- Herramienta 3: PDF -> Imagenes -->
         <section class="tool-panel" id="panel-pdf2img">
           <h2>Extraer imágenes de un PDF</h2>
-          <p class="panel-desc">Cada página del PDF se convertirá en una imagen individual.</p>
+          <p class="panel-desc">Convertí un PDF a JPG o PNG: cada página se exporta como una imagen individual, en alta calidad.</p>
 
           <div class="dropzone" id="dropzone-pdf2img">
             <input type="file" id="input-pdf2img" accept="application/pdf" hidden>
@@ -283,7 +398,7 @@
         <!-- Herramienta 5: Fuentes -->
         <section class="tool-panel" id="panel-font">
           <h2>Convertidor de fuentes</h2>
-          <p class="panel-desc">Convertí entre TTF/OTF y WOFF (el formato liviano para usar fuentes en la web). Detecta automáticamente la dirección según el archivo que subas. WOFF2 todavía no está soportado.</p>
+          <p class="panel-desc">Convertí fuentes TTF u OTF a WOFF (el formato liviano para usar tipografías en la web), o un WOFF descargado a TTF/OTF para instalarlo. Detecta la dirección automáticamente. WOFF2 todavía no está soportado.</p>
 
           <div class="dropzone" id="dropzone-font">
             <input type="file" id="input-font" accept=".ttf,.otf,.woff" multiple hidden>
@@ -333,7 +448,7 @@
         <!-- Herramienta 7: Convertidor de unidades -->
         <section class="tool-panel" id="panel-units">
           <h2>Convertidor de unidades</h2>
-          <p class="panel-desc">Convertí longitudes, pesos, volúmenes y temperaturas al instante.</p>
+          <p class="panel-desc">Calculadora de conversión de unidades: pasá de metros a pies, kilogramos a libras, litros a galones o Celsius a Fahrenheit al instante.</p>
 
           <div class="options-row options-row--center">
             <label>
@@ -365,7 +480,7 @@
         <!-- Herramienta 8: Convertidor de zona horaria -->
         <section class="tool-panel" id="panel-time">
           <h2>Convertidor de zona horaria</h2>
-          <p class="panel-desc">Convertí una fecha y hora entre distintas zonas horarias del mundo.</p>
+          <p class="panel-desc">Convertidor de horarios internacional: pasá una fecha y hora entre Argentina, España, México, Estados Unidos y cualquier otra zona horaria del mundo.</p>
 
           <div class="options-row">
             <label>
@@ -449,6 +564,26 @@
     <details>
       <summary>¿Hay límite de tamaño de archivo?</summary>
       <p>El límite depende de la memoria de tu navegador. Para archivos muy grandes (cientos de MB) el proceso puede ser más lento.</p>
+    </details>
+    <details>
+      <summary>¿Puedo convertir fotos HEIC de iPhone a JPG?</summary>
+      <p>Sí. ConvertiYa detecta automáticamente archivos HEIC/HEIF y los convierte a JPG o PNG desde las herramientas de Comprimir imágenes o Convertir imágenes, sin instalar nada.</p>
+    </details>
+    <details>
+      <summary>¿Cómo comprimo una imagen sin perder calidad?</summary>
+      <p>Usá la herramienta Comprimir imágenes y ajustá el control de calidad y el ancho máximo. Con 75-85% de calidad normalmente no se nota diferencia visual, pero el archivo pesa mucho menos.</p>
+    </details>
+    <details>
+      <summary>¿Puedo convertir un PDF a Word gratis?</summary>
+      <p>Sí. En el Convertidor de documentos subí tu PDF y elegí "Word (.docx)" como salida. Extrae el texto del PDF, sin conservar diseño o formato avanzado.</p>
+    </details>
+    <details>
+      <summary>¿ConvertiYa funciona en el celular?</summary>
+      <p>Sí, ConvertiYa es 100% responsive y funciona en cualquier navegador moderno de celular, tablet o computadora, sin instalar ninguna app.</p>
+    </details>
+    <details>
+      <summary>¿Necesito registrarme para usar ConvertiYa?</summary>
+      <p>No. No pedimos registro, email ni datos personales para usar ninguna de las herramientas.</p>
     </details>
   </section>
 </main>
