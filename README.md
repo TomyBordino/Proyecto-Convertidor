@@ -46,7 +46,7 @@ servicios (elegí uno):
 - **GitHub Pages**: Settings → Pages → Deploy from branch → elegí la rama y
   la carpeta raíz.
 - **Netlify** / **Vercel** / **Cloudflare Pages**: conectá el repositorio y
-  despllegá sin configuración adicional (no hay build command).
+  desplegá sin configuración adicional (no hay build command).
 
 ## Monetización con anuncios (Google AdSense)
 
