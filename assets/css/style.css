@@ -565,6 +565,38 @@ a:hover { color: var(--color-primary-dark); }
   box-shadow: var(--shadow-sm);
 }
 
+.other-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.other-tool-card {
+  display: block;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+.other-tool-card:hover {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+  border-color: var(--color-primary-light);
+  text-decoration: none;
+}
+.other-tool-card strong {
+  display: block;
+  color: var(--color-text);
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+.other-tool-card span {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
 #faq { max-width: 760px; margin: 0 auto; }
 #faq details {
   background: var(--color-surface);

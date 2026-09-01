@@ -12,19 +12,24 @@ function isImageFile(file) {
 const tabButtons = document.querySelectorAll(".tab-btn");
 const panels = document.querySelectorAll(".tool-panel");
 
-tabButtons.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    tabButtons.forEach((b) => {
-      b.classList.remove("active");
-      b.setAttribute("aria-selected", "false");
-    });
-    btn.classList.add("active");
-    btn.setAttribute("aria-selected", "true");
-
-    const targetId = "panel-" + btn.dataset.tab;
-    panels.forEach((p) => p.classList.toggle("active", p.id === targetId));
+function activateTab(tabKey) {
+  tabButtons.forEach((b) => {
+    const isTarget = b.dataset.tab === tabKey;
+    b.classList.toggle("active", isTarget);
+    b.setAttribute("aria-selected", isTarget ? "true" : "false");
   });
+  panels.forEach((p) => p.classList.toggle("active", p.id === "panel-" + tabKey));
+}
+
+tabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => activateTab(btn.dataset.tab));
 });
+
+// Cada landing page dedicada declara su herramienta principal en
+// <body data-default-tab="..."> para que abra directamente en esa pestaña.
+if (document.body.dataset.defaultTab) {
+  activateTab(document.body.dataset.defaultTab);
+}
 
 // ---------- Helper: dropzone + input genérico ----------
 function setupDropzone(dropzoneId, inputId, onFilesSelected) {

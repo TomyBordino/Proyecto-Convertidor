@@ -30,15 +30,62 @@ ffmpeg.wasm; y EPUB, por la complejidad de parsear bien el formato. Ver
 ## Estructura del proyecto
 
 ```
-index.html          → página principal con las 3 herramientas
-privacy.html         → política de privacidad (requerida por AdSense)
-terms.html            → términos de uso
-ads.txt               → archivo requerido por Google AdSense
-assets/css/style.css  → estilos
-assets/js/converters.js → funciones de conversión (sin DOM)
-assets/js/main.js      → lógica de interfaz (tabs, dropzones, descargas)
-assets/img/favicon.svg → ícono del sitio
+index.html                          → hub / home (las 9 herramientas)
+comprimir-imagenes.html             → landing dedicada, SEO
+convertir-imagenes.html             → landing dedicada, SEO
+imagenes-a-pdf.html                 → landing dedicada, SEO
+pdf-a-imagenes.html                 → landing dedicada, SEO
+convertidor-de-audio.html           → landing dedicada, SEO
+convertidor-de-fuentes.html         → landing dedicada, SEO
+convertidor-de-documentos.html      → landing dedicada, SEO
+convertidor-de-unidades.html        → landing dedicada, SEO
+convertidor-de-zona-horaria.html    → landing dedicada, SEO
+privacy.html                        → política de privacidad (requerida por AdSense)
+terms.html                           → términos de uso
+ads.txt                              → archivo requerido por Google AdSense
+robots.txt / sitemap.xml             → SEO técnico
+assets/css/style.css                 → estilos
+assets/js/converters.js              → funciones de conversión (sin DOM)
+assets/js/main.js                    → lógica de interfaz (tabs, dropzones, descargas)
+assets/img/favicon.svg               → ícono del sitio
+scripts/pages-config.js              → metadatos (título, meta, H1) de cada landing
+scripts/generate-pages.js            → genera las 9 landing pages + sitemap.xml
 ```
+
+### Landing pages por herramienta
+
+Las 10 páginas HTML comparten exactamente el mismo motor
+(`assets/js/converters.js` y `main.js`) y el mismo contenido — las 9
+herramientas siguen viviendo todas como pestañas en cada página. Lo que
+cambia por página es: `<title>`, meta descripción, `canonical`, Open Graph,
+el H1 y el párrafo de introducción, y qué pestaña abre por defecto
+(`<body data-default-tab="...">`, leído por `main.js`). Así cada URL puede
+posicionar para su propia búsqueda ("comprimir imagen online", "pdf a word
+gratis", etc.) sin duplicar la lógica de conversión.
+
+**Estas páginas NO se editan a mano.** Se generan con un script:
+
+```bash
+node scripts/generate-pages.js
+```
+
+El script toma `index.html` como plantilla base y aplica los reemplazos
+definidos en `scripts/pages-config.js` (uno por herramienta), y regenera
+`sitemap.xml` con todas las URLs. Flujo de trabajo:
+
+1. Para cambiar algo compartido entre todas las páginas (una herramienta,
+   el header, el FAQ, el CSS): editá `index.html` / `assets/*` como siempre,
+   y después corré `node scripts/generate-pages.js` para propagar el cambio
+   a las 9 landing pages.
+2. Para cambiar el título/meta/H1 de una sola herramienta: editá su entrada
+   en `scripts/pages-config.js` y volvé a correr el script.
+3. Para agregar una herramienta nueva: agregale su panel/tab en `index.html`
+   como las demás, sumale una entrada en `pages-config.js`, y corré el script.
+
+Sigue siendo un sitio 100% estático (HTML/CSS/JS plano, sin backend): el
+script de generación es una herramienta de autor que corrés vos (o yo)
+antes de subir cambios, no algo que corra en producción ni en el navegador
+del usuario.
 
 ## Cómo probarlo localmente
 
@@ -129,17 +176,15 @@ Ya implementado:
    confianza que un subdominio de `.netlify.app`, tanto para SEO como para la
    aprobación de AdSense.
 
-### La mejora más grande pendiente
+### Landing pages por herramienta (ya implementado)
 
-Ahora mismo las 9 herramientas viven todas en pestañas dentro de una sola
-URL (`index.html`). Eso limita cuánto puede posicionar cada una por separado:
-una búsqueda de "comprimir imagen online" y otra de "pdf a word gratis"
-compiten por la misma página. El siguiente paso de mayor impacto sería crear
-una URL/landing page dedicada por herramienta (ej. `/comprimir-imagenes`,
-`/pdf-a-word`), cada una con su propio título, meta descripción y contenido
-enfocado en esa conversión puntual, mientras reutilizan el mismo motor de
-conversión (`assets/js/converters.js`). Es el patrón que usan Smallpdf,
-iLovePDF o Convertio.
+Cada herramienta tiene su propia URL dedicada (`comprimir-imagenes.html`,
+`convertidor-de-audio.html`, etc.), con título, meta descripción, H1 y texto
+introductorio enfocados en esa conversión puntual — mientras reutilizan el
+mismo motor de conversión (`assets/js/converters.js`). Es el patrón que usan
+Smallpdf, iLovePDF o Convertio. Ver la sección "Landing pages por
+herramienta" más arriba para cómo mantenerlas (se generan con
+`node scripts/generate-pages.js`, no se editan a mano).
 
 ## Próximos pasos sugeridos
 
