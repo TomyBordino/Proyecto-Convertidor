@@ -16,6 +16,20 @@ pip install -r requirements.txt
 python tpo.py armar --demo     # prueba con datos sintéticos (no usa internet)
 ```
 
+### Capa de IA (noticias)
+
+`armar` y `rebalancear` usan un modelo de lenguaje (Claude, de Anthropic) que busca
+noticias en la web y ajusta el ranking. Requiere una API key de
+[console.anthropic.com](https://console.anthropic.com) (tiene costo por uso; se
+estima del orden de US$ 0,5–1 por corrida):
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."      # Windows PowerShell: $env:ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+Sin key (o si la API falla) el algoritmo sigue igual con el ranking cuantitativo y lo deja
+anotado en la bitácora. `--sin-noticias` la desactiva a propósito. **No commitear la key.**
+
 Antes de empezar, poner en `config.py` el capital inicial real de BymaLab
 (`CAPITAL_INICIAL_ARS`) y borrar `estado/` y `salidas/` si se hicieron pruebas.
 
@@ -59,15 +73,22 @@ que estar commiteado y pusheado después de cada `confirmar`.
 4. **Ranking.** Score = 45% momentum 12-1 + 30% Beta + 25% Sharpe (z-scores, recortados al
    5–95%). Se eligen los 10 mejores; un activo que ya está en cartera se mantiene mientras
    rankee entre los 13 primeros (histéresis, para evitar rotación y costos).
-5. **Retorno esperado.** 50% CAPM (rf + β·prima de mercado 5,5%) + 50% media histórica
+5. **Ajuste por noticias (IA).** Claude (`claude-opus-5-5`) busca en la web noticias de los
+   últimos 10 días de los 18 mejores del ranking (y de los que ya están en cartera) y devuelve,
+   con salida estructurada, sentimiento (−1 a +1), confianza (0 a 1), resumen y fuentes.
+   Score final = score cuantitativo + 0,5 × sentimiento × confianza. Si
+   sentimiento × confianza ≤ −0,6 el activo se veta: no entra y, si está en cartera, sale.
+   El peso es acotado a propósito: la IA corrige el ranking, no lo reemplaza. Cada corrida
+   guarda `salidas/noticias_<fecha>.json` con resúmenes y URLs como evidencia.
+6. **Retorno esperado.** 50% CAPM (rf + β·prima de mercado 5,5%) + 50% media histórica
    (acotada entre −50% y +100%). La mezcla reduce el error de estimación de Markowitz.
-6. **Riesgo.** Matriz de covarianzas anualizada, contraída 30% hacia su diagonal.
-7. **Optimización.** Cartera tangente (máximo Sharpe) con pesos entre 4% y 20%, 2% de liquidez
+7. **Riesgo.** Matriz de covarianzas anualizada, contraída 30% hacia su diagonal.
+8. **Optimización.** Cartera tangente (máximo Sharpe) con pesos entre 4% y 20%, 2% de liquidez
    y Beta de cartera ≥ 1,2. Se exporta la frontera eficiente (CSV y PNG) en cada corrida.
-8. **Rebalanceo semanal.** Se opera un activo si su peso difiere > 2 p.p. del objetivo o si
+9. **Rebalanceo semanal.** Se opera un activo si su peso difiere > 2 p.p. del objetivo o si
    entra/sale de la selección. Si nada supera la banda, se ajusta el mayor desvío (rebalanceo
    táctico obligatorio por reglamento).
-9. **Alertas diarias.**
+10. **Alertas diarias.**
    - Stop trailing: −15% en USD desde el máximo posterior a la compra → venta total.
    - Quiebre de tendencia: −10% en 20 ruedas y precio bajo la media de 50 → vender la mitad.
    - Desvío de peso > 5 p.p. → volver al objetivo (toma de ganancia si sobrepondera).

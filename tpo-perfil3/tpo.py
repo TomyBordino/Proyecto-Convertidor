@@ -181,6 +181,8 @@ def rankear(met):
 
 def seleccionar(ranking, tenencias):
     """Top N por score, con histéresis para no rotar de más los activos ya en cartera."""
+    if "veto" in ranking:
+        ranking = ranking[~ranking["veto"]]
     mantener = [t for t in ranking.index
                 if t in tenencias and ranking.at[t, "rank"] <= C.N_ACTIVOS + C.BUFFER_RANKING]
     mantener = mantener[:C.N_ACTIVOS]
@@ -394,6 +396,42 @@ def bitacora(titulo, cuerpo):
 
 
 # =============================================================================
+# Capa de IA (noticias)
+# =============================================================================
+def capa_noticias(args, ranking, est, sello):
+    """Ajusta el ranking con el sentimiento de noticias. Devuelve (ranking, texto para bitácora)."""
+    if args.sin_noticias or not C.USAR_NOTICIAS:
+        return ranking, "### Noticias (IA)\n\n_Desactivado: ranking solo cuantitativo._\n"
+    import noticias
+
+    candidatos = list(ranking.index[:C.N_CANDIDATOS_NOTICIAS])
+    candidatos += [t for t in est["posiciones"] if t in ranking.index and t not in candidatos]
+    print(f"Analizando noticias de {len(candidatos)} activos con {C.MODELO_IA}...")
+    evaluaciones, error = noticias.evaluar_noticias(
+        {t: ranking.at[t, "ticker_us"] for t in candidatos})
+    if not evaluaciones:
+        aviso = error or "El modelo no devolvió evaluaciones."
+        print(f"AVISO: {aviso} Se sigue con el ranking cuantitativo.")
+        return ranking, f"### Noticias (IA)\n\n_No disponible ({aviso}) — ranking solo cuantitativo._\n"
+
+    (SALIDAS / f"noticias_{sello}.json").write_text(
+        json.dumps(evaluaciones, indent=2, ensure_ascii=False), encoding="utf-8")
+    ajustado = noticias.ajustar_ranking(ranking, evaluaciones)
+    filas = pd.DataFrame({
+        "sentimiento": [e["sentimiento"] for e in evaluaciones.values()],
+        "confianza": [e["confianza"] for e in evaluaciones.values()],
+        "veto": ["SÍ" if ajustado.at[t, "veto"] else "" for t in evaluaciones],
+        "resumen": [e["resumen"] for e in evaluaciones.values()],
+    }, index=list(evaluaciones)).sort_values("sentimiento")
+    texto = (f"### Noticias (IA: {C.MODELO_IA})\n\n"
+             f"Ajuste: score += {C.PESO_NOTICIAS} × sentimiento × confianza; "
+             f"veto si sentimiento × confianza <= {C.VETO_NOTICIAS}. "
+             f"Fuentes completas en `noticias_{sello}.json`.\n\n"
+             + tabla_md(filas, {"sentimiento": "{:+.2f}", "confianza": "{:.2f}"}) + "\n")
+    return ajustado, texto
+
+
+# =============================================================================
 # Comandos
 # =============================================================================
 def cmd_optimizar(args, tipo):
@@ -404,6 +442,8 @@ def cmd_optimizar(args, tipo):
 
     met = metricas(mercado)
     ranking = rankear(met)
+    sello = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ranking, texto_ia = capa_noticias(args, ranking, est, sello)
     sel = seleccionar(ranking, est["posiciones"])
     mu, S, beta = insumos(mercado, sel, met)
     w, aviso = tangente(mu, S, beta, mercado.rf)
@@ -414,8 +454,9 @@ def cmd_optimizar(args, tipo):
     beta_c = float(w @ beta)
     sharpe = (ret - mercado.rf) / vol
 
-    sello = datetime.now().strftime("%Y%m%d_%H%M%S")
-    motivos = {t: "Sale de cartera: perdió ranking (momentum/beta/sharpe)"
+    vetados = set(ranking.index[ranking["veto"]]) if "veto" in ranking else set()
+    motivos = {t: ("Sale de cartera: veto por noticias negativas (IA)" if t in vetados
+                   else "Sale de cartera: perdió ranking (momentum/beta/sharpe/noticias)")
                for t in est["posiciones"] if t not in pesos}
     motivos.update({t: "Ingresa a cartera: top del ranking" for t in pesos
                     if t not in est["posiciones"]})
@@ -426,8 +467,9 @@ def cmd_optimizar(args, tipo):
     cartera = pd.DataFrame({
         "peso": w, "retorno_esp": mu, "volatilidad": np.sqrt(np.diag(S)), "beta": beta,
         "rank": ranking.loc[sel, "rank"].values}, index=sel).sort_values("peso", ascending=False)
-    top = ranking.head(C.N_ACTIVOS + C.BUFFER_RANKING + 2)[
-        ["beta", "momentum", "sharpe", "volatilidad", "score", "rank"]]
+    cols = ["beta", "momentum", "sharpe", "volatilidad"]
+    cols += ["score_cuant", "noticias"] if "noticias" in ranking else []
+    top = ranking.head(C.N_ACTIVOS + C.BUFFER_RANKING + 2)[cols + ["score", "rank"]]
 
     resumen = (
         f"- Datos: {mercado.origen}, cierre {mercado.fecha}; tasa libre de riesgo {mercado.rf:.2%}\n"
@@ -440,8 +482,10 @@ def cmd_optimizar(args, tipo):
     cuerpo = (resumen
               + "\n### Ranking (selección por score)\n\n"
               + tabla_md(top, {"beta": "{:.2f}", "momentum": "{:.1%}", "sharpe": "{:.2f}",
-                               "volatilidad": "{:.1%}", "score": "{:.2f}", "rank": "{:.0f}"})
-              + "\n\n### Pesos objetivo\n\n"
+                               "volatilidad": "{:.1%}", "score_cuant": "{:.2f}",
+                               "noticias": "{:+.2f}", "score": "{:.2f}", "rank": "{:.0f}"})
+              + "\n\n" + texto_ia
+              + "\n### Pesos objetivo\n\n"
               + tabla_md(cartera, {"peso": "{:.1%}", "retorno_esp": "{:.1%}",
                                    "volatilidad": "{:.1%}", "beta": "{:.2f}", "rank": "{:.0f}"})
               + "\n\n### Órdenes a ejecutar en BymaLab\n\n" + tabla_ordenes(ordenes)
@@ -604,6 +648,8 @@ def main():
     p.add_argument("--demo", action="store_true", help="usar datos sintéticos (sin internet)")
     p.add_argument("--semilla", type=int, default=7, help="semilla de los datos demo")
     p.add_argument("--forzar", action="store_true", help="permitir 'armar' con posiciones")
+    p.add_argument("--sin-noticias", action="store_true",
+                   help="no usar la capa de IA de noticias (solo ranking cuantitativo)")
     args = p.parse_args()
     SALIDAS.mkdir(exist_ok=True)
     {"armar": lambda a: cmd_optimizar(a, "armado"),

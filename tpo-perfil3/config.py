@@ -63,3 +63,12 @@ STOP_TRAILING = 0.15        # Venta total si el activo cae 15% (en USD) desde su
 CAIDA_TENDENCIA = 0.10      # Reducir 50% si cae >10% en 20 ruedas Y cotiza bajo su media de 50
 DESVIO_ALERTA = 0.05        # Alerta de rebalanceo anticipado si un peso se desvía > 5 p.p.
 DRAWDOWN_CARTERA = 0.12     # Alerta general si la cartera cae 12% desde su máximo
+
+# --- Capa de IA: análisis de noticias con un modelo de lenguaje ---------------
+USAR_NOTICIAS = True          # Si es False (o falta ANTHROPIC_API_KEY) se usa solo el ranking cuantitativo
+MODELO_IA = "claude-opus-5-5"
+N_CANDIDATOS_NOTICIAS = 18    # Se analizan los 18 mejores del ranking cuantitativo + los que ya están en cartera
+DIAS_NOTICIAS = 10            # Antigüedad máxima de las noticias consideradas
+MAX_BUSQUEDAS_WEB = 20        # Límite de búsquedas web por corrida (controla costo)
+PESO_NOTICIAS = 0.5           # score_final = score_cuant + 0,5 × sentimiento × confianza
+VETO_NOTICIAS = -0.6          # Si sentimiento × confianza <= -0,6 el activo queda excluido
