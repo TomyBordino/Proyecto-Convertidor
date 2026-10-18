@@ -84,6 +84,9 @@ class CCLResponse(BaseModel):
     as_of: date | None
     market: float | None
     history: list[Point]
+    reference: list[Point] = []
+    reference_source: str | None = None
+    reference_deviation_pct: float | None = None
     assets: list[CCLAsset]
 
 

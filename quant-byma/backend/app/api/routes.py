@@ -29,9 +29,14 @@ from app.db.models import IngestionRun, Instrument, SavedFilter, ScoreSnapshot
 from app.db.session import get_session
 from app.ingestion.ccl import implied_ccl_series
 from app.ingestion.providers import build_provider
-from app.services.analytics import ratio_history, usd_statements
+from app.services.analytics import (
+    analysis_series,
+    per_share_close,
+    ratio_history,
+    usd_statements,
+)
 from app.services.data import instrument_by_ticker, load_bars, load_fx, load_statements, to_usd_ccl
-from app.services.ingestion import run_ingestion
+from app.services.ingestion import IngestionError, run_ingestion
 
 router = APIRouter(prefix="/api")
 SessionDep = Depends(get_session)
@@ -82,6 +87,7 @@ def health(session: Session = SessionDep) -> dict:
     return {
         "status": "ok",
         "as_of": _latest_day(session),
+        "provider": None if last is None else last.provider,
         "last_ingestion": None
         if last is None
         else {
@@ -237,17 +243,15 @@ def asset_fundamentals(ticker: str, session: Session = SessionDep) -> dict:
     ccl = load_fx(session, "CCL")
     raw = load_statements(session, inst.id)
     statements = usd_statements(raw, ccl)
-    us = load_bars(session, inst.id, "US")
-    close = (
-        us["close"]
-        if inst.us_symbol and not us.empty
-        else to_usd_ccl(load_bars(session, inst.id, "BA"), ccl)["close"]
+    series, series_kind = analysis_series(
+        inst, load_bars(session, inst.id, "BA"), load_bars(session, inst.id, "US"), ccl
     )
+    close = per_share_close(inst, series, series_kind)
     return {
         "ticker": inst.ticker,
         "reporting_currency": raw[0].currency if raw else None,
         "currency": "USD",
-        "periods": ratio_history(statements, close),
+        "periods": ratio_history(statements, close) if not close.empty else [],
     }
 
 
@@ -271,10 +275,20 @@ def ccl_overview(
         ),
         key=lambda a: a.deviation_pct,
     )
+    ref = load_fx(session, "CCL_REF")
+    ref_dev = None
+    if not ccl.empty and not ref.empty:
+        aligned = pd.concat({"own": ccl, "ref": ref}, axis=1, join="inner")
+        if not aligned.empty:
+            last = aligned.iloc[-1]
+            ref_dev = round((last["own"] / last["ref"] - 1) * 100, 2)
     return CCLResponse(
         as_of=day,
         market=None if ccl.empty else round(float(ccl.iloc[-1]), 2),
         history=_points(ccl.iloc[-days:]),
+        reference=_points(ref.iloc[-days:]),
+        reference_source="argentinadatos.com" if not ref.empty else None,
+        reference_deviation_pct=ref_dev,
         assets=assets,
     )
 
@@ -318,7 +332,13 @@ def delete_filter(filter_id: int, session: Session = SessionDep) -> None:
 
 
 @router.post("/ingest")
-def ingest(session: Session = SessionDep, provider: str | None = None) -> dict:
+def ingest(
+    session: Session = SessionDep,
+    provider: str | None = Query(None, pattern="^(real|yahoo|demo)$"),
+) -> dict:
     settings = get_settings()
     p = build_provider(provider or settings.data_provider)
-    return run_ingestion(session, p, history_days=settings.history_days)
+    try:
+        return run_ingestion(session, p, history_days=settings.history_days)
+    except IngestionError as exc:
+        raise HTTPException(502, str(exc)) from exc

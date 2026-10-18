@@ -6,7 +6,9 @@ aislada del sitio estático (ConvertiYa) que ocupa la raíz del repositorio.
 ## Estructura
 - `backend/` — Python 3.11+, FastAPI, pandas/numpy, SQLAlchemy 2 (SQLite en dev, PostgreSQL/TimescaleDB en prod).
   - `app/ingestion/` — universo de tickers y ratios (`universe.py`), CCL implícito/mercado (`ccl.py`),
-    normalización ARS→USD (`normalization.py`), proveedores `yahoo` y `demo` (`providers/`).
+    normalización ARS→USD (`normalization.py`), proveedores en `providers/`: `real.py` (cadena BYMA Data →
+    data912 → Yahoo para BYMA; Tiingo → Stooq → Yahoo para EE. UU.; SEC EDGAR → FMP → Yahoo para balances;
+    argentinadatos para CCL de referencia), `demo.py` (sintético, solo tests).
   - `app/analytics/` — `technical.py` (SMA/EMA/RSI/MACD/Bollinger/ATR), `patterns.py`, `fundamental.py`,
     `scoring.py` (Composite Score), `screener.py` (DSL de filtros).
   - `app/services/` — pipeline de ingesta y cálculo de snapshots; `app/api/` — rutas `/api/*`.
@@ -19,7 +21,8 @@ aislada del sitio estático (ConvertiYa) que ocupa la raíz del repositorio.
 Backend (desde `quant-byma/backend`):
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
-python -m app.scheduler --once --provider demo   # ingesta (demo | yahoo | auto)
+python -m app.scheduler --check                  # diagnóstico de cada fuente real
+python -m app.scheduler --once                   # ingesta real (--provider real | yahoo | demo)
 uvicorn app.main:app --reload --port 8000        # dev API
 python -m pytest                                 # tests
 ruff check . && ruff format --check . && mypy app   # lint + tipos
@@ -36,7 +39,11 @@ Base de datos de producción: `docker compose up -d db`, luego `QB_DATABASE_URL=
 correr una ingesta y `psql "$URL" -f backend/app/db/timescale.sql`.
 
 ## Convenciones
-- Configuración por variables `QB_*` (ver `backend/app/config.py`).
+- Configuración por variables `QB_*` (ver `backend/app/config.py` y `backend/.env.example`).
+- Nunca caer a datos sintéticos de forma implícita: `demo` solo con `--provider demo` o en tests.
+- Los tests de proveedores usan `httpx.MockTransport` con payloads del formato de cada API.
+- Fundamentales de ADRs: el precio del ADR se divide por el ratio (`per_share_close`) porque los 20-F
+  informan acciones ordinarias.
 - Toda función de ratio devuelve `None` si el dato falta o no tiene sentido económico; el scoring re-escala
   los componentes disponibles, nunca penaliza por falta de datos.
 - Respuestas JSON sin NaN/Infinity (`_f()` en `services/analytics.py`).

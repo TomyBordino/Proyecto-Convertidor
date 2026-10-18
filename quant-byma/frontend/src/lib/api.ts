@@ -120,6 +120,9 @@ export interface CCLResponse {
   as_of: string | null;
   market: number | null;
   history: Point[];
+  reference: Point[];
+  reference_source: string | null;
+  reference_deviation_pct: number | null;
   assets: { ticker: string; kind: Kind; implied_ccl: number; deviation_pct: number; ratio_suspect: boolean }[];
 }
 

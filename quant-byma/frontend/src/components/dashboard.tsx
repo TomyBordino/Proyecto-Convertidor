@@ -21,6 +21,7 @@ export function Dashboard() {
   const [minScore, setMinScore] = useState(0);
   const [onlySignals, setOnlySignals] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const sectors = useMemo(
     () => [...new Set((data?.items ?? []).map((i) => i.sector))].sort(),
@@ -41,9 +42,12 @@ export function Dashboard() {
 
   async function refresh() {
     setRefreshing(true);
+    setRefreshError(null);
     try {
       await api.ingest();
       await mutate();
+    } catch (e) {
+      setRefreshError(e instanceof Error ? e.message : String(e));
     } finally {
       setRefreshing(false);
     }
@@ -73,6 +77,12 @@ export function Dashboard() {
           {refreshing ? "Actualizando…" : "Actualizar datos"}
         </Button>
       </div>
+
+      {refreshError && (
+        <p className="rounded-md border border-negative/40 bg-negative/10 px-3 py-2 text-sm text-negative">
+          La ingesta falló: {refreshError}
+        </p>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi title="CCL de mercado" value={fmtMoney(data.ccl_market, "ARS")} hint="Mediana ponderada por volumen" />

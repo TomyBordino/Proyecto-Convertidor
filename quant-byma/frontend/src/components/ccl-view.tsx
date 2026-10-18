@@ -30,9 +30,22 @@ export function CCLView() {
         <CardHeader>
           <CardDescription>CCL de mercado al {data.as_of}</CardDescription>
           <CardTitle className="tabular text-2xl">{fmtMoney(data.market, "ARS")}</CardTitle>
+          {data.reference_source && (
+            <CardDescription>
+              Referencia {data.reference_source}: desvío del CCL calculado {fmtPct(data.reference_deviation_pct)}
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent>
-          <LineChart series={[{ points: data.history, color: "#3e9fff", title: "CCL" }]} height={300} />
+          <LineChart
+            series={[
+              { points: data.history, color: "#3e9fff", title: "CCL calculado" },
+              ...(data.reference.length
+                ? [{ points: data.reference, color: "#f5a524", title: "CCL referencia" }]
+                : []),
+            ]}
+            height={300}
+          />
         </CardContent>
       </Card>
       <Card>

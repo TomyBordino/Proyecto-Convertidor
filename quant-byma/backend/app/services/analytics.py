@@ -56,6 +56,18 @@ def analysis_series(
     return to_usd_ccl(ba, ccl), "USD_CCL"
 
 
+def per_share_close(inst: Instrument, series: pd.DataFrame, series_kind: str) -> pd.Series:
+    """Precio en USD por acción ordinaria, para combinar con las acciones del balance.
+
+    Un ADR representa `ratio` acciones locales y los balances (20-F) informan acciones
+    ordinarias, así que el precio del ADR se divide por el ratio. Un CEDEAR se analiza con
+    el precio de la acción subyacente, que ya es por acción.
+    """
+    if inst.kind == "LOCAL" and series_kind == "US" and inst.ratio:
+        return series["close"] / inst.ratio
+    return series["close"]
+
+
 def usd_statements(statements: list[fa.FinancialStatement], ccl: pd.Series) -> list:
     out = []
     for s in statements:
@@ -169,10 +181,11 @@ def compute_snapshots(
         suspect = bool(imp and is_ratio_suspect(imp, ccl_market))
 
         statements = usd_statements(load_statements(session, inst.id), ccl)
-        hist_rows = ratio_history(statements, series["close"])
+        px_share = per_share_close(inst, series, series_kind)
+        hist_rows = ratio_history(statements, px_share)
         current = (
             fa.all_ratios(
-                float(series["close"].iloc[-1]),
+                float(px_share.iloc[-1]),
                 statements[-1],
                 statements[-2] if len(statements) > 1 else None,
             )
