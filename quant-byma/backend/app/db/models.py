@@ -1,0 +1,146 @@
+"""Modelo relacional.
+
+En PostgreSQL + TimescaleDB, `price_bars`, `fx_rates` y `score_snapshots` se convierten
+en hypertables (ver `timescale.sql`). El mismo modelo corre sobre SQLite para desarrollo.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+
+from sqlalchemy import (
+    JSON,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Instrument(Base):
+    """Activo operado en BYMA.
+
+    kind = "CEDEAR": certificado sobre una acción/ETF extranjero (`us_symbol`).
+    kind = "LOCAL": acción argentina; `us_symbol` es su ADR si existe.
+    `ratio` = cantidad de unidades locales equivalentes a 1 unidad en EE. UU.
+    """
+
+    __tablename__ = "instruments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16), unique=True, index=True)
+    ba_symbol: Mapped[str] = mapped_column(String(24))
+    us_symbol: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    kind: Mapped[str] = mapped_column(String(8))
+    name: Mapped[str] = mapped_column(String(128))
+    sector: Mapped[str] = mapped_column(String(64))
+    ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Moneda en la que el proveedor reporta los balances (USD para CEDEARs/ADRs, ARS si no).
+    reporting_currency: Mapped[str] = mapped_column(String(3), default="USD")
+
+    prices: Mapped[list[PriceBar]] = relationship(back_populates="instrument")
+
+
+class PriceBar(Base):
+    __tablename__ = "price_bars"
+    __table_args__ = (UniqueConstraint("instrument_id", "market", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), index=True)
+    market: Mapped[str] = mapped_column(String(2))  # "BA" (ARS) | "US" (USD)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    open: Mapped[float] = mapped_column(Float)
+    high: Mapped[float] = mapped_column(Float)
+    low: Mapped[float] = mapped_column(Float)
+    close: Mapped[float] = mapped_column(Float)
+    volume: Mapped[float] = mapped_column(Float, default=0.0)
+
+    instrument: Mapped[Instrument] = relationship(back_populates="prices")
+
+
+class FxRate(Base):
+    """Tipos de cambio diarios. kind: CCL (implícito de mercado), CPI_AR (índice de precios)."""
+
+    __tablename__ = "fx_rates"
+    __table_args__ = (UniqueConstraint("kind", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    day: Mapped[date] = mapped_column(Date, index=True)
+    value: Mapped[float] = mapped_column(Float)
+    n_samples: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class FundamentalPeriod(Base):
+    """Estados contables anuales tal como los reporta el proveedor (moneda original)."""
+
+    __tablename__ = "fundamentals"
+    __table_args__ = (UniqueConstraint("instrument_id", "period_end"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), index=True)
+    period_end: Mapped[date] = mapped_column(Date)
+    currency: Mapped[str] = mapped_column(String(3))
+    revenue: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ebit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ebitda: Mapped[float | None] = mapped_column(Float, nullable=True)
+    net_income: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_assets: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_liabilities: Mapped[float | None] = mapped_column(Float, nullable=True)
+    current_assets: Mapped[float | None] = mapped_column(Float, nullable=True)
+    current_liabilities: Mapped[float | None] = mapped_column(Float, nullable=True)
+    equity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_debt: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cash: Mapped[float | None] = mapped_column(Float, nullable=True)
+    retained_earnings: Mapped[float | None] = mapped_column(Float, nullable=True)
+    operating_cash_flow: Mapped[float | None] = mapped_column(Float, nullable=True)
+    capex: Mapped[float | None] = mapped_column(Float, nullable=True)
+    shares_outstanding: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tax_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class ScoreSnapshot(Base):
+    """Resultado del motor de scoring por activo y fecha (incluye métricas planas en JSON)."""
+
+    __tablename__ = "score_snapshots"
+    __table_args__ = (UniqueConstraint("instrument_id", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    composite: Mapped[float] = mapped_column(Float)
+    technical: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fundamental: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ccl: Mapped[float | None] = mapped_column(Float, nullable=True)
+    metrics: Mapped[dict] = mapped_column(JSON)
+    breakdown: Mapped[dict] = mapped_column(JSON)
+
+    instrument: Mapped[Instrument] = relationship()
+
+
+class SavedFilter(Base):
+    __tablename__ = "saved_filters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    definition: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class IngestionRun(Base):
+    __tablename__ = "ingestion_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    provider: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16))
+    message: Mapped[str] = mapped_column(String(512), default="")

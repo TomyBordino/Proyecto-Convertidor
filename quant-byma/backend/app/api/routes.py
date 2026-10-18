@@ -1,0 +1,324 @@
+from __future__ import annotations
+
+import math
+from datetime import date
+
+import pandas as pd
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.analytics.screener import FIELDS, FilterDefinition, apply_filter
+from app.analytics.technical import compute_all
+from app.api.schemas import (
+    AssetDetail,
+    Candle,
+    CCLAsset,
+    CCLResponse,
+    FieldInfo,
+    Point,
+    PriceSeriesResponse,
+    RankingItem,
+    RankingsResponse,
+    SavedFilterIn,
+    SavedFilterOut,
+)
+from app.config import get_settings
+from app.db.models import IngestionRun, Instrument, SavedFilter, ScoreSnapshot
+from app.db.session import get_session
+from app.ingestion.ccl import implied_ccl_series
+from app.ingestion.providers import build_provider
+from app.services.analytics import ratio_history, usd_statements
+from app.services.data import instrument_by_ticker, load_bars, load_fx, load_statements, to_usd_ccl
+from app.services.ingestion import run_ingestion
+
+router = APIRouter(prefix="/api")
+SessionDep = Depends(get_session)
+
+INDICATOR_COLUMNS = (
+    "sma20",
+    "sma50",
+    "sma200",
+    "ema20",
+    "rsi14",
+    "macd",
+    "macd_signal",
+    "macd_hist",
+    "bb_upper",
+    "bb_middle",
+    "bb_lower",
+    "atr14",
+)
+
+
+def _latest_day(session: Session) -> date | None:
+    return session.scalar(select(func.max(ScoreSnapshot.day)))
+
+
+def _snapshot_rows(session: Session) -> tuple[date | None, list[dict]]:
+    day = _latest_day(session)
+    if day is None:
+        return None, []
+    snaps = session.scalars(select(ScoreSnapshot).where(ScoreSnapshot.day == day)).all()
+    return day, [s.metrics for s in snaps]
+
+
+def _ranked(rows: list[dict]) -> list[RankingItem]:
+    return [RankingItem(rank=i + 1, **r) for i, r in enumerate(rows)]
+
+
+def _points(s: pd.Series) -> list[Point]:
+    return [
+        Point(time=ts.strftime("%Y-%m-%d"), value=round(float(v), 6))
+        for ts, v in s.items()
+        if v is not None and math.isfinite(float(v))
+    ]
+
+
+@router.get("/health")
+def health(session: Session = SessionDep) -> dict:
+    last = session.scalar(select(IngestionRun).order_by(IngestionRun.id.desc()))
+    return {
+        "status": "ok",
+        "as_of": _latest_day(session),
+        "last_ingestion": None
+        if last is None
+        else {
+            "at": last.started_at,
+            "provider": last.provider,
+            "status": last.status,
+            "message": last.message,
+        },
+    }
+
+
+@router.get("/rankings", response_model=RankingsResponse)
+def rankings(
+    session: Session = SessionDep,
+    kind: str | None = Query(None, pattern="^(CEDEAR|LOCAL)$"),
+    sector: str | None = None,
+    min_score: float = Query(0, ge=0, le=100),
+    sort_by: str = "composite_score",
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
+    limit: int = Query(100, ge=1, le=500),
+) -> RankingsResponse:
+    day, rows = _snapshot_rows(session)
+    conditions = [{"field": "composite_score", "op": "gte", "value": min_score}]
+    if kind:
+        conditions.append({"field": "kind", "op": "eq", "value": kind})
+    if sector:
+        conditions.append({"field": "sector", "op": "eq", "value": sector})
+    try:
+        f = FilterDefinition.model_validate(
+            {"conditions": conditions, "sort_by": sort_by, "sort_dir": sort_dir, "limit": limit}
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    ccl = load_fx(session, "CCL")
+    items = _ranked(apply_filter(rows, f))
+    return RankingsResponse(
+        as_of=day,
+        ccl_market=None if ccl.empty else round(float(ccl.iloc[-1]), 2),
+        count=len(items),
+        items=items,
+    )
+
+
+@router.post("/screener/run", response_model=RankingsResponse)
+def run_screener(definition: FilterDefinition, session: Session = SessionDep) -> RankingsResponse:
+    day, rows = _snapshot_rows(session)
+    ccl = load_fx(session, "CCL")
+    items = _ranked(apply_filter(rows, definition))
+    return RankingsResponse(
+        as_of=day,
+        ccl_market=None if ccl.empty else round(float(ccl.iloc[-1]), 2),
+        count=len(items),
+        items=items,
+    )
+
+
+@router.get("/screener/fields", response_model=list[FieldInfo])
+def screener_fields() -> list[FieldInfo]:
+    return [FieldInfo(key=k, label=v[0], type=v[1]) for k, v in FIELDS.items()]
+
+
+@router.get("/instruments")
+def instruments(session: Session = SessionDep) -> list[dict]:
+    rows = session.scalars(select(Instrument).order_by(Instrument.kind, Instrument.ticker)).all()
+    return [
+        {
+            "ticker": i.ticker,
+            "name": i.name,
+            "kind": i.kind,
+            "sector": i.sector,
+            "ratio": i.ratio,
+            "us_symbol": i.us_symbol,
+            "ba_symbol": i.ba_symbol,
+        }
+        for i in rows
+    ]
+
+
+def _get_instrument(session: Session, ticker: str) -> Instrument:
+    inst = instrument_by_ticker(session, ticker)
+    if inst is None:
+        raise HTTPException(404, f"Activo {ticker} no encontrado")
+    return inst
+
+
+@router.get("/instruments/{ticker}", response_model=AssetDetail)
+def asset_detail(ticker: str, session: Session = SessionDep) -> AssetDetail:
+    inst = _get_instrument(session, ticker)
+    snap = session.scalar(
+        select(ScoreSnapshot)
+        .where(ScoreSnapshot.instrument_id == inst.id)
+        .order_by(ScoreSnapshot.day.desc())
+    )
+    return AssetDetail(
+        ticker=inst.ticker,
+        name=inst.name,
+        kind=inst.kind,
+        sector=inst.sector,
+        ratio=inst.ratio,
+        us_symbol=inst.us_symbol,
+        ba_symbol=inst.ba_symbol,
+        as_of=snap.day if snap else None,
+        metrics=snap.metrics if snap else {},
+        breakdown=snap.breakdown if snap else {},
+    )
+
+
+@router.get("/instruments/{ticker}/prices", response_model=PriceSeriesResponse)
+def asset_prices(
+    ticker: str,
+    session: Session = SessionDep,
+    currency: str = Query("ARS", pattern="^(ARS|USD|US)$"),
+    days: int = Query(365, ge=30, le=2000),
+) -> PriceSeriesResponse:
+    """ARS = cotización en BYMA; USD = BYMA / CCL de mercado; US = subyacente/ADR en EE. UU."""
+    inst = _get_instrument(session, ticker)
+    ba = load_bars(session, inst.id, "BA")
+    us = load_bars(session, inst.id, "US")
+    ccl = load_fx(session, "CCL")
+    series = {"ARS": ba, "USD": to_usd_ccl(ba, ccl), "US": us}[currency]
+    if series.empty:
+        raise HTTPException(404, f"Sin serie {currency} para {inst.ticker}")
+    ind = compute_all(series).iloc[-days:]
+    candles = [
+        Candle(
+            time=ts.strftime("%Y-%m-%d"),
+            open=round(r.open, 4),
+            high=round(r.high, 4),
+            low=round(r.low, 4),
+            close=round(r.close, 4),
+            volume=round(r.volume, 0),
+        )
+        for ts, r in ind.iterrows()
+    ]
+    implied = (
+        implied_ccl_series(ba["close"], us["close"], inst.ratio).iloc[-days:]
+        if inst.ratio and not us.empty
+        else pd.Series(dtype=float)
+    )
+    return PriceSeriesResponse(
+        ticker=inst.ticker,
+        currency=currency,
+        candles=candles,
+        indicators={c: _points(ind[c].dropna()) for c in INDICATOR_COLUMNS},
+        implied_ccl=_points(implied),
+        market_ccl=_points(ccl.iloc[-days:]),
+    )
+
+
+@router.get("/instruments/{ticker}/fundamentals")
+def asset_fundamentals(ticker: str, session: Session = SessionDep) -> dict:
+    inst = _get_instrument(session, ticker)
+    ccl = load_fx(session, "CCL")
+    raw = load_statements(session, inst.id)
+    statements = usd_statements(raw, ccl)
+    us = load_bars(session, inst.id, "US")
+    close = (
+        us["close"]
+        if inst.us_symbol and not us.empty
+        else to_usd_ccl(load_bars(session, inst.id, "BA"), ccl)["close"]
+    )
+    return {
+        "ticker": inst.ticker,
+        "reporting_currency": raw[0].currency if raw else None,
+        "currency": "USD",
+        "periods": ratio_history(statements, close),
+    }
+
+
+@router.get("/ccl", response_model=CCLResponse)
+def ccl_overview(
+    session: Session = SessionDep, days: int = Query(365, ge=5, le=2000)
+) -> CCLResponse:
+    day, rows = _snapshot_rows(session)
+    ccl = load_fx(session, "CCL")
+    assets = sorted(
+        (
+            CCLAsset(
+                ticker=r["ticker"],
+                kind=r["kind"],
+                implied_ccl=r["implied_ccl"],
+                deviation_pct=r["ccl_dev_pct"],
+                ratio_suspect=r.get("ratio_suspect", False),
+            )
+            for r in rows
+            if r.get("implied_ccl") is not None
+        ),
+        key=lambda a: a.deviation_pct,
+    )
+    return CCLResponse(
+        as_of=day,
+        market=None if ccl.empty else round(float(ccl.iloc[-1]), 2),
+        history=_points(ccl.iloc[-days:]),
+        assets=assets,
+    )
+
+
+# ------------------------------------------------------------ filtros guardados
+
+
+def _filter_out(f: SavedFilter) -> SavedFilterOut:
+    return SavedFilterOut(
+        id=f.id,
+        name=f.name,
+        definition=FilterDefinition.model_validate(f.definition),
+        created_at=f.created_at,
+    )
+
+
+@router.get("/filters", response_model=list[SavedFilterOut])
+def list_filters(session: Session = SessionDep) -> list[SavedFilterOut]:
+    return [_filter_out(f) for f in session.scalars(select(SavedFilter).order_by(SavedFilter.name))]
+
+
+@router.post("/filters", response_model=SavedFilterOut, status_code=201)
+def create_filter(body: SavedFilterIn, session: Session = SessionDep) -> SavedFilterOut:
+    f = SavedFilter(name=body.name.strip(), definition=body.definition.model_dump())
+    session.add(f)
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(409, f"Ya existe un filtro llamado '{body.name}'") from exc
+    session.refresh(f)
+    return _filter_out(f)
+
+
+@router.delete("/filters/{filter_id}", status_code=204)
+def delete_filter(filter_id: int, session: Session = SessionDep) -> None:
+    res = session.execute(delete(SavedFilter).where(SavedFilter.id == filter_id))
+    if res.rowcount == 0:  # type: ignore[attr-defined]
+        raise HTTPException(404, "Filtro no encontrado")
+    session.commit()
+
+
+@router.post("/ingest")
+def ingest(session: Session = SessionDep, provider: str | None = None) -> dict:
+    settings = get_settings()
+    p = build_provider(provider or settings.data_provider)
+    return run_ingestion(session, p, history_days=settings.history_days)
