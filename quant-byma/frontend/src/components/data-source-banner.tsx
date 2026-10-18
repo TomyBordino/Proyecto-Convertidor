@@ -32,13 +32,31 @@ export function DataSourceBanner() {
   return null;
 }
 
+/** Fuentes que efectivamente sirvieron datos en la última ingesta (sin backfills ni respaldos). */
+function primarySources(message: string): string {
+  const match = message.match(/Fuentes: \{(.*)\}/);
+  if (!match) return "";
+  const names = [...match[1].matchAll(/'([a-z_:0-9]+)'/g)].map((m) => m[1]);
+  const label: Record<string, string> = {
+    bymadata: "BYMA Data",
+    data912: "data912",
+    yahoo: "Yahoo Finance",
+    tiingo: "Tiingo",
+    stooq: "Stooq",
+    sec_edgar: "SEC EDGAR",
+    fmp: "FMP",
+  };
+  const seen = new Set(names.map((n) => n.split(":").pop() ?? n));
+  return [...seen].map((n) => label[n] ?? n).join(" · ");
+}
+
 export function DataSourceNote() {
   const { data } = useSWR<Health>("/api/health", fetcher);
   if (!data?.last_ingestion) return null;
+  const sources = data.provider === "real" ? primarySources(data.last_ingestion.message) : data.provider;
   return (
     <span title={data.last_ingestion.message}>
-      Fuente: {data.provider === "real" ? "BYMA Data · SEC EDGAR · Tiingo/Stooq" : data.provider} · estado{" "}
-      {data.last_ingestion.status}
+      Fuentes: {sources || data.provider} · estado {data.last_ingestion.status}
     </span>
   );
 }

@@ -68,6 +68,24 @@ DURATION_CONCEPTS: dict[str, tuple[str, ...]] = {
         "ifrs-full:PurchaseOfPropertyPlantAndEquipment",
     ),
     "tax_rate": ("us-gaap:EffectiveIncomeTaxRateContinuingOperations",),
+    # Respaldos cuando no hay un concepto total (ver parse_companyfacts).
+    "depreciation_only": (
+        "us-gaap:Depreciation",
+        "us-gaap:DepreciationNonproduction",
+        "us-gaap:DepreciationDepletionAndAmortizationPropertyPlantAndEquipment",
+    ),
+    "amortization_intangibles": ("us-gaap:AmortizationOfIntangibleAssets",),
+    "pretax_income": (
+        "us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+        "us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+        "ifrs-full:ProfitLossBeforeTax",
+    ),
+    "interest_expense": (
+        "us-gaap:InterestExpense",
+        "us-gaap:InterestExpenseNonoperating",
+        "us-gaap:InterestExpenseDebt",
+        "ifrs-full:InterestExpense",
+    ),
     "diluted_shares": (
         "us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
         "ifrs-full:AdjustedWeightedAverageShares",
@@ -138,17 +156,26 @@ def _unit_facts(concept: dict, prefer_currency: str | None) -> tuple[str, list[d
 def annual_values(
     facts: dict, concept_ids: tuple[str, ...], duration: bool, currency: str | None
 ) -> tuple[dict[date, float], str | None]:
-    """Primer concepto con datos → {fecha de cierre: valor}, tomando la presentación anual
-    más reciente (las re-expresiones posteriores pisan a las originales)."""
+    """{fecha de cierre: valor} combinando conceptos por período.
+
+    Las empresas cambian de concepto con el tiempo (p. ej. Apple pasó de `Revenues` a
+    `RevenueFromContractWithCustomerExcludingAssessedTax` en 2018), así que cada ejercicio
+    toma el primer concepto, en orden de preferencia, que lo informe. Dentro de un concepto
+    gana la presentación más reciente (las re-expresiones pisan a las originales).
+    """
+    merged: dict[date, float] = {}
+    unit_used: str | None = currency
     for cid in concept_ids:
         taxonomy, name = cid.split(":")
         concept = facts.get(taxonomy, {}).get(name)
         if not concept:
             continue
-        picked = _unit_facts(concept, currency)
+        picked = _unit_facts(concept, unit_used)
         if not picked:
             continue
         unit, rows = picked
+        if unit_used is not None and unit != unit_used:
+            continue  # no mezclar monedas entre conceptos
         best: dict[date, tuple[str, float]] = {}
         for f in rows:
             if f.get("form") not in ANNUAL_FORMS or "end" not in f:
@@ -162,9 +189,12 @@ def annual_values(
             filed = f.get("filed", "")
             if end not in best or filed >= best[end][0]:
                 best[end] = (filed, float(f["val"]))
-        if best:
-            return {d: v for d, (_, v) in best.items()}, unit
-    return {}, None
+        if not best:
+            continue
+        unit_used = unit
+        for d, (_, v) in best.items():
+            merged.setdefault(d, v)
+    return merged, (unit_used if merged else None)
 
 
 def _total_debt(v: dict[str, float | None]) -> float | None:
@@ -220,6 +250,12 @@ def parse_companyfacts(payload: dict) -> list[FinancialStatement]:
             and v["equity"] is not None
         ):
             v["total_liabilities"] = v["liabilities_and_equity"] - v["equity"]
+        if v["ebit"] is None and v["pretax_income"] is not None:
+            # Sin resultado operativo (petroleras, farmacéuticas): EBIT ≈ resultado antes de
+            # impuestos + intereses.
+            v["ebit"] = v["pretax_income"] + (v["interest_expense"] or 0.0)
+        if v["depreciation"] is None and v["depreciation_only"] is not None:
+            v["depreciation"] = v["depreciation_only"] + (v["amortization_intangibles"] or 0.0)
         ebitda = None
         if v["ebit"] is not None and v["depreciation"] is not None:
             ebitda = v["ebit"] + v["depreciation"]

@@ -30,6 +30,7 @@ from app.analytics.technical import compute_all
 from app.db.models import Instrument, ScoreSnapshot
 from app.ingestion.ccl import ccl_deviation, implied_ccl, is_ratio_suspect
 from app.ingestion.normalization import ccl_close_and_avg, statement_to_usd
+from app.ingestion.universe import UNIVERSE_BY_TICKER
 from app.services.data import load_bars, load_fx, load_statements, to_usd_ccl
 
 
@@ -63,8 +64,10 @@ def per_share_close(inst: Instrument, series: pd.DataFrame, series_kind: str) ->
     ordinarias, así que el precio del ADR se divide por el ratio. Un CEDEAR se analiza con
     el precio de la acción subyacente, que ya es por acción.
     """
-    if inst.kind == "LOCAL" and series_kind == "US" and inst.ratio:
-        return series["close"] / inst.ratio
+    spec = UNIVERSE_BY_TICKER.get(inst.ticker)
+    per_adr = spec.shares_per_us_unit if spec else (inst.ratio if inst.kind == "LOCAL" else None)
+    if series_kind == "US" and per_adr:
+        return series["close"] / per_adr
     return series["close"]
 
 
@@ -154,7 +157,9 @@ def compute_snapshots(
     ccl = load_fx(session, "CCL")
     if ccl.empty:
         return 0
-    asof = pd.Timestamp(day) if day else ccl.index.max()
+    # El snapshot se fecha en la última rueda con datos, no en la fecha pedida
+    # (una corrida en fin de semana no debe crear un día sin mercado).
+    asof = min(pd.Timestamp(day), ccl.index.max()) if day else ccl.index.max()
     ccl = ccl[ccl.index <= asof]
     ccl_market = float(ccl.iloc[-1])
     instruments = session.scalars(select(Instrument).order_by(Instrument.ticker)).all()

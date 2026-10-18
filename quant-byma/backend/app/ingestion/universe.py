@@ -8,6 +8,8 @@ IMPORTANTE: BYMA/la Caja de Valores modifican ratios ante splits del subyacente.
 Los valores de este archivo son la referencia de carga inicial y deben verificarse
 contra el listado oficial de BYMA. El pipeline marca como sospechoso todo activo cuyo
 CCL implícito se aleje >35% de la mediana, síntoma típico de un ratio desactualizado.
+Revisión contra precios reales del 2026-10-16 (CCL de mercado 1.618,76): SPY da 60:1 e
+YPFD 10:1 (split local del 2026-08-03 visible en la serie cruda de data912).
 """
 
 from __future__ import annotations
@@ -24,14 +26,35 @@ class AssetSpec:
     ratio: float | None
     us_symbol: str | None
     reporting_currency: str = "USD"
+    # Acciones del balance (unidad de `shares_outstanding`) por unidad que cotiza en EE. UU.
+    # ADRs: acciones ordinarias por ADR según el 20-F; coincide con `ratio` salvo un split
+    # local posterior al balance. Clases: BRK-B vale 1/1500 de una acción Clase A.
+    reported_shares_per_unit: float | None = None
+
+    @property
+    def shares_per_us_unit(self) -> float | None:
+        if self.reported_shares_per_unit:
+            return self.reported_shares_per_unit
+        if self.kind == "LOCAL" and self.us_symbol:
+            return self.ratio
+        return None
 
     @property
     def ba_symbol(self) -> str:
         return f"{self.ticker}.BA"
 
 
-def _cedear(ticker: str, name: str, sector: str, ratio: float, us: str | None = None) -> AssetSpec:
-    return AssetSpec(ticker, name, sector, "CEDEAR", ratio, us or ticker)
+def _cedear(
+    ticker: str,
+    name: str,
+    sector: str,
+    ratio: float,
+    us: str | None = None,
+    reported_shares_per_unit: float | None = None,
+) -> AssetSpec:
+    return AssetSpec(
+        ticker, name, sector, "CEDEAR", ratio, us or ticker, "USD", reported_shares_per_unit
+    )
 
 
 def _local(
@@ -40,9 +63,11 @@ def _local(
     sector: str,
     adr: str | None = None,
     ratio: float | None = None,
+    reported_shares_per_unit: float | None = None,
 ) -> AssetSpec:
     # Las locales con ADR se analizan con balances en USD (los del ADR, formato 20-F).
-    return AssetSpec(ticker, name, sector, "LOCAL", ratio, adr, "USD" if adr else "ARS")
+    currency = "USD" if adr else "ARS"
+    return AssetSpec(ticker, name, sector, "LOCAL", ratio, adr, currency, reported_shares_per_unit)
 
 
 UNIVERSE: list[AssetSpec] = [
@@ -64,19 +89,23 @@ UNIVERSE: list[AssetSpec] = [
     _cedear("CVX", "Chevron Corp.", "Energía", 16),
     _cedear("PFE", "Pfizer Inc.", "Salud", 4),
     _cedear("JNJ", "Johnson & Johnson", "Salud", 15),
-    _cedear("DIS", "Walt Disney Co.", "Comunicaciones", 12),
+    _cedear("DISN", "Walt Disney Co.", "Comunicaciones", 12, "DIS"),
     _cedear("BABA", "Alibaba Group", "Consumo discrecional", 9),
     _cedear("GLOB", "Globant S.A.", "Tecnología", 18),
     _cedear("VIST", "Vista Energy", "Energía", 3),
-    _cedear("BRKB", "Berkshire Hathaway B", "Financiero", 22, "BRK-B"),
-    _cedear("SPY", "SPDR S&P 500 ETF", "ETF", 20),
+    # Berkshire informa acciones equivalentes Clase A; 1 Clase A = 1.500 Clase B.
+    _cedear("BRKB", "Berkshire Hathaway B", "Financiero", 22, "BRK-B", 1 / 1500),
+    _cedear("SPY", "SPDR S&P 500 ETF", "ETF", 60),
     _cedear("QQQ", "Invesco QQQ ETF", "ETF", 20),
     # --- Acciones locales (panel líder) ---
     _local("GGAL", "Grupo Financiero Galicia", "Financiero", "GGAL", 10),
     _local("BMA", "Banco Macro", "Financiero", "BMA", 10),
     _local("BBAR", "BBVA Argentina", "Financiero", "BBAR", 3),
     _local("SUPV", "Grupo Supervielle", "Financiero", "SUPV", 5),
-    _local("YPFD", "YPF S.A.", "Energía", "YPF", 1),
+    # Split local 10:1 (ago-2026): 1 ADR = 10 YPFD, pero el 20-F 2025 informa acciones
+    # previas al split (1 ADR = 1 acción). Actualizar reported_shares_per_unit cuando el
+    # 20-F lo refleje.
+    _local("YPFD", "YPF S.A.", "Energía", "YPF", 10, reported_shares_per_unit=1),
     _local("PAMP", "Pampa Energía", "Energía", "PAM", 25),
     _local("CEPU", "Central Puerto", "Utilities", "CEPU", 10),
     _local("EDN", "Edenor", "Utilities", "EDN", 20),

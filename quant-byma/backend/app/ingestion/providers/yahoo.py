@@ -74,7 +74,15 @@ class YahooProvider:
             return []
         merged = pd.concat(frames)
         merged = merged[~merged.index.duplicated()]
-        currency = (t.fast_info.get("currency") if hasattr(t, "fast_info") else None) or "USD"
+        # `financialCurrency` es la moneda de los balances; `currency` (fast_info) es la de
+        # cotización: un ADR cotiza en USD aunque el emisor reporte en ARS (p. ej. GGAL, TGS).
+        try:
+            currency = (t.info or {}).get("financialCurrency")
+        except Exception:  # info hace un request aparte que puede fallar
+            currency = None
+        if not currency:
+            log.warning("Yahoo no informa la moneda de los balances de %s; se descartan", symbol)
+            return []
         out = []
         for col in sorted(merged.columns):
             values = {}

@@ -46,6 +46,22 @@ Las acciones locales sin ADR (TXAR, ALUA, COME, TRAN, BYMA) no tienen balances e
 
 Diagnóstico de conectividad: `python -m app.scheduler --check`.
 
+Detalles de la integración:
+- BYMA Data publica ~2 años de historia: el tramo anterior se completa con data912/Yahoo,
+  reescalado al ajuste por splits de la fuente principal (data912 publica precios crudos).
+- La API XBRL de la SEC a veces no incluye los estados de 20-F recientes; si el último
+  ejercicio tiene más de 15 meses se agregan los posteriores de Yahoo en la misma moneda.
+- Una fuente con 3 fallas seguidas se saltea por el resto de la corrida (circuit breaker).
+
+### Validación con datos reales (rueda del 2026-10-16)
+
+- 42/42 activos ingeridos, 115.313 ruedas, balances para los 40 que no son ETFs.
+- CCL calculado 1.618,76 vs 1.615,75 publicado (argentinadatos): +0,19%; desvío absoluto
+  medio 0,30% en 2026 y 0,78% en 2025.
+- CCL implícito de los 42 activos dentro de ±0,8% del de mercado.
+- La validación detectó y corrigió: SPY 60:1 (no 20:1), YPFD 10:1 tras su split local del
+  2026-08-03 y el ticker de Disney en BYMA (DISN).
+
 Dominios que tiene que permitir la red donde corra la ingesta:
 `open.bymadata.com.ar`, `data912.com`, `api.tiingo.com`, `stooq.com`, `www.sec.gov`, `data.sec.gov`,
 `financialmodelingprep.com`, `api.argentinadatos.com`, `query1.finance.yahoo.com`,

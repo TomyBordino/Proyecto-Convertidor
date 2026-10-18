@@ -14,8 +14,10 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date
 
+import numpy as np
 import pandas as pd
 
 from app.analytics.fundamental import FinancialStatement
@@ -37,6 +39,34 @@ log = logging.getLogger(__name__)
 
 # Mínimo de ruedas para aceptar una serie; menos suele indicar un símbolo mal mapeado.
 MIN_BARS = 20
+MAX_CONSECUTIVE_FAILURES = 3
+# Si la serie arranca dentro de este margen respecto de `start`, no se busca backfill.
+BACKFILL_TOLERANCE_DAYS = 10
+SPLICE_MIN_OVERLAP = 10
+# Cierre de ejercicio + plazo de presentación del 20-F (4 meses) + margen.
+STALE_FUNDAMENTALS_DAYS = 15 * 30
+
+
+def splice_older(primary: pd.DataFrame, secondary: pd.DataFrame) -> pd.DataFrame | None:
+    """Tramo de `secondary` anterior a `primary`, reescalado a la base de precios de `primary`.
+
+    Las fuentes difieren en el ajuste por splits/cambios de ratio (BYMA Data y Yahoo publican
+    series ajustadas; data912, crudas). El factor se mide como la mediana de
+    primary/secondary en las fechas comunes; sin superposición suficiente no se empalma.
+    """
+    common = primary.index.intersection(secondary.index)
+    if len(common) < SPLICE_MIN_OVERLAP:
+        return None
+    ratio = primary.loc[common, "close"] / secondary.loc[common, "close"]
+    # Solo las primeras ruedas comunes: el ajuste de la fuente principal aplica hacia atrás.
+    factor = float(ratio.iloc[:SPLICE_MIN_OVERLAP].median())
+    if not np.isfinite(factor) or factor <= 0:
+        return None
+    older = secondary[secondary.index < primary.index.min()].copy()
+    for c in ("open", "high", "low", "close"):
+        older[c] = older[c] * factor
+    older["volume"] = older["volume"] / factor
+    return older
 
 
 class _YahooPrices:
@@ -69,6 +99,7 @@ class RealDataProvider:
         self.fund_sources = list(fundamentals)
         self.ccl_reference = ccl_reference
         self.usage: Counter[str] = Counter()  # fuente → cantidad de series servidas
+        self._failures: Counter[str] = Counter()
 
     @classmethod
     def from_settings(cls, s: Settings) -> RealDataProvider:
@@ -93,40 +124,123 @@ class RealDataProvider:
             fund.append(yahoo)
         return cls(local, us, fund, ArgentinaDatosCCL(http))
 
+    def _call(self, src: PriceSource, symbol: str, start: date, end: date) -> pd.DataFrame:
+        """Llama a una fuente aplicando un circuit breaker: tras MAX_CONSECUTIVE_FAILURES
+        errores seguidos (p. ej. host caído o bloqueado) se la saltea por el resto de la corrida
+        en lugar de pagar reintentos en cada símbolo."""
+        if self._failures[src.name] >= MAX_CONSECUTIVE_FAILURES:
+            raise ProviderError("deshabilitada en esta corrida por fallas consecutivas")
+        try:
+            df = src.history(symbol, start, end)
+        except ProviderError:
+            self._failures[src.name] += 1
+            raise
+        except Exception as exc:  # una fuente rota no debe frenar la cadena
+            self._failures[src.name] += 1
+            raise ProviderError(f"{type(exc).__name__}: {exc}") from exc
+        self._failures[src.name] = 0
+        return df
+
     def history(self, symbol: str, start: date, end: date) -> pd.DataFrame:
+        """Primera fuente con datos suficientes; si su historia empieza tarde (BYMA Data solo
+        publica ~2 años) se completa el tramo anterior con las fuentes siguientes."""
         chain = self.local if symbol.endswith(".BA") else self.us
-        errors = []
+        errors: list[str] = []
+        result: pd.DataFrame | None = None
         for src in chain:
             try:
-                df = src.history(symbol, start, end)
+                df = self._call(src, symbol, start, end)
             except ProviderError as exc:
                 errors.append(f"{src.name}: {exc}")
                 continue
-            except Exception as exc:  # una fuente rota no debe frenar la cadena
-                errors.append(f"{src.name}: {type(exc).__name__}: {exc}")
-                continue
-            if len(df) >= MIN_BARS:
+            if result is None:
+                if len(df) < MIN_BARS:
+                    errors.append(f"{src.name}: {len(df)} ruedas")
+                    continue
+                result = df
                 self.usage[src.name] += 1
-                return df
-            errors.append(f"{src.name}: {len(df)} ruedas")
-        raise ProviderError(f"Sin precios para {symbol} ({'; '.join(errors)})")
+            else:
+                older = splice_older(result, df)
+                if older is None:
+                    errors.append(f"{src.name}: sin superposición confiable para empalmar")
+                    continue
+                if older.empty:
+                    continue
+                result = pd.concat([older, result]).sort_index()
+                self.usage[f"backfill:{src.name}"] += 1
+            if result.index.min() <= pd.Timestamp(start) + pd.Timedelta(
+                days=BACKFILL_TOLERANCE_DAYS
+            ):
+                break
+        if result is None:
+            raise ProviderError(f"Sin precios para {symbol} ({'; '.join(errors)})")
+        return result
 
-    def fundamentals(self, symbol: str) -> list[FinancialStatement]:
-        errors = []
-        for src in self.fund_sources:
-            try:
-                statements = src.fundamentals(symbol)
-            except ProviderError as exc:
-                errors.append(f"{src.name}: {exc}")
+    def _fetch_fundamentals(self, src: FundamentalsSource, symbol: str, errors: list[str]):
+        try:
+            return src.fundamentals(symbol)
+        except ProviderError as exc:
+            errors.append(f"{src.name}: {exc}")
+        except Exception as exc:
+            errors.append(f"{src.name}: {type(exc).__name__}: {exc}")
+        return []
+
+    def fundamentals(self, symbol: str, today: date | None = None) -> list[FinancialStatement]:
+        """Primera fuente con balances. Si su último ejercicio está desactualizado (la API
+        XBRL de la SEC a veces no incluye los estados de 20-F recientes), se agregan los
+        ejercicios posteriores de las fuentes siguientes, solo si reportan en la misma moneda."""
+        today = today or date.today()
+        errors: list[str] = []
+        result: list[FinancialStatement] = []
+        for i, src in enumerate(self.fund_sources):
+            statements = self._fetch_fundamentals(src, symbol, errors)
+            if not statements:
                 continue
-            except Exception as exc:
-                errors.append(f"{src.name}: {type(exc).__name__}: {exc}")
-                continue
-            if statements:
-                self.usage[f"fund:{src.name}"] += 1
-                return statements
+            result = statements
+            self.usage[f"fund:{src.name}"] += 1
+            for extra in self.fund_sources[i + 1 :]:
+                if (today - result[-1].period_end).days <= STALE_FUNDAMENTALS_DAYS:
+                    break
+                newer = [
+                    s
+                    for s in self._fetch_fundamentals(extra, symbol, errors)
+                    if s.period_end > result[-1].period_end
+                    and s.currency == result[-1].currency
+                    and (s.net_income is not None or s.revenue is not None)
+                ]
+                if newer:
+                    result = [*result, *newer]
+                    self.usage[f"fund_extend:{extra.name}"] += 1
+            return self._fill_missing_shares(result, symbol, self.fund_sources[i + 1 :], errors)
         log.info("Sin fundamentales para %s (%s)", symbol, "; ".join(errors))
         return []
+
+    def _fill_missing_shares(
+        self,
+        statements: list[FinancialStatement],
+        symbol: str,
+        others: list[FundamentalsSource],
+        errors: list[str],
+    ) -> list[FinancialStatement]:
+        """Emisores con varias clases de acciones (Visa, Berkshire) no informan un total en la
+        portada XBRL: se toma la cantidad de acciones de otra fuente para el mismo ejercicio."""
+        if not statements or statements[-1].shares_outstanding:
+            return statements
+        for src in others:
+            shares = {
+                s.period_end: s.shares_outstanding
+                for s in self._fetch_fundamentals(src, symbol, errors)
+                if s.shares_outstanding
+            }
+            if statements[-1].period_end in shares:
+                self.usage[f"fund_shares:{src.name}"] += 1
+                return [
+                    s
+                    if s.shares_outstanding or s.period_end not in shares
+                    else replace(s, shares_outstanding=shares[s.period_end])
+                    for s in statements
+                ]
+        return statements
 
     def reference_ccl(self, start: date, end: date) -> pd.Series:
         if self.ccl_reference is None:

@@ -321,3 +321,115 @@ def test_chain_routes_us_symbols_and_never_fabricates():
 def test_fundamentals_chain_returns_empty_when_all_fail():
     p = RealDataProvider([], [], [FakeSource("sec_edgar", ProviderError("x"))])
     assert p.fundamentals("AAPL") == []
+
+
+def test_concepts_are_merged_per_period():
+    # Como Apple: `Revenues` solo en ejercicios viejos, el concepto ASC 606 en los nuevos.
+    facts = {
+        "us-gaap": {
+            "Revenues": usd(fact(229, "2017-09-30", "2016-10-01")),
+            "RevenueFromContractWithCustomerExcludingAssessedTax": usd(
+                fact(391, "2024-09-28", "2023-10-01")
+            ),
+            "NetIncomeLoss": usd(
+                fact(48, "2017-09-30", "2016-10-01"), fact(94, "2024-09-28", "2023-10-01")
+            ),
+        }
+    }
+    st = parse_companyfacts({"facts": facts})
+    assert [s.revenue for s in st] == [229, 391]
+
+
+def test_backfill_extends_short_primary_history():
+    recent = bars(30)  # arranca 2025-01-01
+    full_idx = pd.bdate_range("2024-06-03", periods=170)
+    full = pd.DataFrame(
+        {c: 2.0 for c in ("open", "high", "low", "close", "volume")}, index=full_idx
+    )
+    p = RealDataProvider([FakeSource("bymadata", recent), FakeSource("data912", full)], [], [])
+    df = p.history("GGAL.BA", date(2024, 6, 1), END)
+    assert df.index.min() == pd.Timestamp("2024-06-03")
+    assert df.index.is_unique and df.index.is_monotonic_increasing
+    # en el tramo superpuesto manda la fuente principal y el respaldo se reescala (2.0 → 1.0)
+    assert df.loc["2025-01-01", "close"] == 1.0
+    assert df["close"].eq(1.0).all()
+    assert p.usage == {"bymadata": 1, "backfill:data912": 1}
+
+
+def test_circuit_breaker_skips_failing_source():
+    dead = FakeSource("stooq", ProviderError("connection reset"))
+    good = FakeSource("yahoo", bars(30))
+    p = RealDataProvider([], [dead, good], [])
+    for _ in range(5):
+        p.history("AAPL", START, END)
+    assert dead.calls == 3
+
+
+def test_splice_rescales_unadjusted_backfill():
+    # Fuente principal ajustada por un split 10:1; el respaldo trae precios crudos.
+    from app.ingestion.providers.real import splice_older
+
+    idx = pd.bdate_range("2025-01-01", periods=60)
+    raw = pd.DataFrame(
+        {"open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0, "volume": 10.0}, index=idx
+    )
+    raw.iloc[40:, :4] = 10.0  # split visible en la serie cruda
+    adjusted = raw.iloc[20:].copy()
+    adjusted.iloc[:, :4] = 10.0
+    older = splice_older(adjusted, raw)
+    assert older["close"].eq(10.0).all() and older["volume"].eq(100.0).all()
+    assert splice_older(adjusted, raw.iloc[:15]) is None  # sin superposición
+
+
+def stmt(year, currency="ARS", ni=1.0):
+    from app.analytics.fundamental import FinancialStatement
+
+    return FinancialStatement(period_end=date(year, 12, 31), currency=currency, net_income=ni)
+
+
+def test_stale_fundamentals_extended_with_same_currency_only():
+    sec = FakeSource("sec_edgar", [stmt(2023), stmt(2024)])
+    yahoo = FakeSource("yahoo", [stmt(2024, ni=9), stmt(2025, ni=2)])
+    p = RealDataProvider([], [], [sec, yahoo])
+    out = p.fundamentals("GGAL", today=date(2026, 10, 18))
+    assert [(s.period_end.year, s.net_income) for s in out] == [(2023, 1), (2024, 1), (2025, 2)]
+
+    other_ccy = FakeSource("yahoo", [stmt(2025, currency="USD")])
+    p = RealDataProvider([], [], [FakeSource("sec_edgar", [stmt(2024)]), other_ccy])
+    assert [s.period_end.year for s in p.fundamentals("X", today=date(2026, 10, 18))] == [2024]
+
+
+def test_fresh_fundamentals_not_extended():
+    sec = FakeSource("sec_edgar", [stmt(2025)])
+    yahoo = FakeSource("yahoo", ProviderError("no debería llamarse"))
+    p = RealDataProvider([], [], [sec, yahoo])
+    assert len(p.fundamentals("X", today=date(2026, 6, 1))) == 1
+
+
+PRETAX = (
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"
+)
+
+
+def test_ebit_and_da_fallbacks():
+    facts = {
+        "us-gaap": {
+            "Revenues": usd(fact(100, "2025-12-31", "2025-01-01")),
+            "NetIncomeLoss": usd(fact(10, "2025-12-31", "2025-01-01")),
+            PRETAX: usd(fact(14, "2025-12-31", "2025-01-01")),
+            "InterestExpense": usd(fact(2, "2025-12-31", "2025-01-01")),
+            "Depreciation": usd(fact(5, "2025-12-31", "2025-01-01")),
+            "AmortizationOfIntangibleAssets": usd(fact(1, "2025-12-31", "2025-01-01")),
+        }
+    }
+    s = parse_companyfacts({"facts": facts})[-1]
+    assert s.ebit == 16 and s.ebitda == 22
+
+
+def test_missing_shares_filled_from_next_source():
+    from dataclasses import replace as dc_replace
+
+    sec = FakeSource("sec_edgar", [stmt(2025, currency="USD")])
+    yahoo = FakeSource("yahoo", [dc_replace(stmt(2025, currency="USD"), shares_outstanding=1950.0)])
+    p = RealDataProvider([], [], [sec, yahoo])
+    assert p.fundamentals("V", today=date(2026, 3, 1))[-1].shares_outstanding == 1950.0
