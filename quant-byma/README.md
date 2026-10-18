@@ -67,6 +67,10 @@ Dominios que tiene que permitir la red donde corra la ingesta:
 `financialmodelingprep.com`, `api.argentinadatos.com`, `query1.finance.yahoo.com`,
 `query2.finance.yahoo.com`, `fc.yahoo.com`.
 
+## Pendientes
+
+Ver [PENDIENTES.md](PENDIENTES.md).
+
 ## Puesta en marcha
 
 ```bash
