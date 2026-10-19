@@ -155,6 +155,7 @@ function PredictionCard({ h, p, primary }: { h: string; p: Prediction; primary: 
           <p>
             Puntaje en el <b className="text-foreground">decil {p.decile} de 10</b>: históricamente ese decil subió el{" "}
             {fmtProb(p.decile_hit_rate)} de las veces (retorno mediano {fmtReturn(p.decile_median_return)}).
+            {p.decile === 10 && " El decil superior rindió algo menos que los intermedios, sin un patrón estable año a año."}
           </p>
         )}
         {s.hit_rate !== null && (

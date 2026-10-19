@@ -73,6 +73,22 @@ Cada activo recibe:
 La página **Modelo** del dashboard muestra AUC, Brier skill score, calibración por decil, quintiles y
 desempeño histórico por etapa.
 
+### Validación del modelo (datos reales, 2004–2026, 414 activos)
+
+Métricas fuera de muestra (walk-forward por año, con embargo):
+
+| Horizonte | Tasa base | AUC | Brier skill | Años con AUC > 0,5 | Decil 1 vs deciles 5–8 |
+| --- | --- | --- | --- | --- | --- |
+| 20 ruedas | 54,8% | 0,519 | +0,0013 | 16/21 | 49% vs ~56–57% |
+| 60 ruedas | 57,6% | 0,526 | +0,0027 | 15/21 | 49% vs ~60% |
+| 120 ruedas | 60,0% | 0,539 | +0,0050 | 16/21 | 49% vs ~62–64% |
+
+Antes de llegar a este modelo se probaron, con la misma validación, una regresión logística y
+gradient boosting con 26 variables (AUC 0,51 y Brier skill negativo con 6 años de datos; con 22
+años, el objetivo absoluto dio AUC < 0,5). La ventaja es moderada y está sobre todo en evitar los
+activos peor puntuados. Los múltiplos históricos usan acciones ajustadas por splits: sin ese ajuste
+las empresas que luego hicieron splits parecían baratas en el pasado (información del futuro).
+
 ## Fuentes de datos reales
 
 El proveedor por defecto (`QB_DATA_PROVIDER=real`) combina fuentes con cadena de respaldo y

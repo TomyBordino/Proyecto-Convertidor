@@ -104,6 +104,8 @@ export function ModelView() {
                 </ResponsiveContainer>
                 <p className="mt-2 text-xs text-muted-foreground">
                   La señal es más fuerte en los deciles bajos: sirve sobre todo para evitar los activos más débiles.
+                  El decil superior rindió algo menos que los intermedios, pero ese patrón no fue estable año a año: una
+                  calibración que lo copia predijo peor fuera de muestra, por eso se usa una calibración monótona.
                 </p>
               </CardContent>
             </Card>
