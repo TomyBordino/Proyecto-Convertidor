@@ -355,6 +355,11 @@ def ingest(
     settings = get_settings()
     p = build_provider(provider or settings.data_provider)
     try:
-        return run_ingestion(session, p, history_days=settings.history_days)
+        return run_ingestion(
+            session,
+            p,
+            history_days=settings.history_days,
+            us_history_start=settings.model_history_start,
+        )
     except IngestionError as exc:
         raise HTTPException(502, str(exc)) from exc

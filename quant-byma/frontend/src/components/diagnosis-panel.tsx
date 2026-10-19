@@ -33,9 +33,10 @@ export function DiagnosisPanel({ d }: { d: Diagnosis }) {
       {primary && (
         <Card>
           <CardHeader>
-            <CardTitle>Qué explica la probabilidad a 3 meses</CardTitle>
+            <CardTitle>Qué explica el puntaje</CardTitle>
             <CardDescription>
-              Aporte de cada factor del modelo respecto del activo promedio (coeficiente × valor estandarizado).
+              Percentil del activo en cada factor frente al resto del universo en la misma fecha. El puntaje combina
+              tendencia (50%) y valuación (50%); el aporte es peso × (percentil − 50).
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-6 sm:grid-cols-2">
@@ -140,7 +141,8 @@ function PredictionCard({ h, p, primary }: { h: string; p: Prediction; primary: 
         <CardDescription>P(cotizar más alto en {HORIZON_LABEL[h]})</CardDescription>
         <CardTitle className="tabular flex items-baseline gap-2 text-3xl">
           {fmtProb(p.probability)}
-          {diff !== null && (
+          {!p.has_skill && <span className="text-sm font-medium text-muted-foreground">tasa base · sin ventaja demostrada</span>}
+          {p.has_skill && diff !== null && (
             <span className={cn("text-sm font-medium", diff > 0.04 ? "text-positive" : diff < -0.04 ? "text-negative" : "text-muted-foreground")}>
               {diff >= 0 ? "+" : ""}
               {(diff * 100).toFixed(0)} pp vs base {fmtProb(p.base_rate)}
@@ -188,12 +190,6 @@ function DriverList({ title, drivers, positive }: { title: string; drivers: Driv
   );
 }
 
-function formatFeature(feature: string, v: number | null): string {
-  if (v === null) return "—";
-  if (feature.startsWith("stage_") || feature === "has_fundamentals") return v > 0.5 ? "sí" : "no";
-  if (feature.startsWith("r_")) return `percentil ${(v * 100).toFixed(0)}`;
-  if (feature === "rsi14") return v.toFixed(0);
-  if (feature === "bb_pct_b") return v.toFixed(2);
-  if (feature === "volume_trend") return `${v >= 0 ? "+" : ""}${((Math.exp(v) - 1) * 100).toFixed(0)}%`;
-  return `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+function formatFeature(_feature: string, v: number | null): string {
+  return v === null ? "—" : `percentil ${(v * 100).toFixed(0)}`;
 }

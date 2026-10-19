@@ -53,13 +53,20 @@ Cada activo recibe:
    en máximos, rebote, sobrevendida…).
 2. **Momento fundamental**: percentiles de valuación (P/E, P/S, P/B), calidad (ROE), crecimiento y
    endeudamiento contra su sector (o el universo si el sector tiene menos de 5 empresas).
-3. **Probabilidad de cotizar más alto** en 20, 60 y 120 ruedas, de una regresión logística:
-   - features sin mirar el futuro (los balances cuentan 100 días después del cierre);
-   - validación walk-forward por año con embargo; todas las métricas son fuera de muestra;
-   - calibración isotónica sobre esas predicciones;
-   - evidencia por predicción: frecuencia de acierto de situaciones históricas con puntaje similar,
-     intervalo de Wilson con n efectivo (ventanas superpuestas) y rango de retornos;
-   - factores que explican cada probabilidad (coeficiente × valor estandarizado).
+3. **Probabilidad de cotizar más alto** en 20, 60 y 120 ruedas:
+   - **Puntaje de factores con pesos fijos**: 50% tendencia (percentiles de pendiente de la SMA200,
+     momentum 12-1, distancia a la SMA200 y al máximo anual) + 50% valuación (earnings, book, FCF y
+     sales yield) cuando hay balances. Se eligió así porque con datos reales los modelos ajustados
+     (logística y gradient boosting con 26 variables) no le ganaron a la tasa base fuera de muestra,
+     y los factores clásicos sí (ver "Validación del modelo").
+   - **Calibración isotónica walk-forward**: cada año se califica con una calibración ajustada solo
+     con años anteriores; todas las métricas son fuera de muestra.
+   - **Compuerta de habilidad**: si un horizonte no supera a la tasa base (Brier skill ≤ 0 o
+     AUC < 0,51) se informa la tasa base con la leyenda "sin ventaja demostrada".
+   - Historia de entrenamiento: 22 años de los subyacentes en EE. UU. (desde 2004) y balances SEC
+     desde 2009, usados "point in time" (cada balance cuenta 100 días después del cierre).
+   - Evidencia por predicción: frecuencia de acierto de situaciones con puntaje similar, intervalo
+     de Wilson con n efectivo (ventanas superpuestas) y rango de retornos.
 4. **Sesgo**: Favorable / Neutral / Desfavorable vs la tasa base, marcado como significativo cuando
    el intervalo de confianza de las situaciones similares excluye a la tasa base.
 

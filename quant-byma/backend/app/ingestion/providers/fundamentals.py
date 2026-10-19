@@ -24,7 +24,9 @@ from app.ingestion.providers.http import HttpClient
 log = logging.getLogger(__name__)
 
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
-MAX_PERIODS = 6
+# Ejercicios a conservar: los balances XBRL de la SEC arrancan en 2009; el modelo los usa
+# "point in time" para validar el factor de valuación con historia larga.
+MAX_PERIODS = 18
 
 
 class FundamentalsSource(Protocol):

@@ -13,7 +13,8 @@ aislada del sitio estático (ConvertiYa) que ocupa la raíz del repositorio.
     estimación de ratios con precios reales e historia de cambios de ratio.
   - `app/analytics/` — `technical.py` (SMA/EMA/RSI/MACD/Bollinger/ATR), `patterns.py`, `fundamental.py`,
     `scoring.py` (Composite Score), `screener.py` (DSL de filtros), `regime.py` (etapas de Weinstein),
-    `model.py` (panel point-in-time, logística walk-forward, calibración isotónica, evidencia).
+    `model.py` (panel point-in-time, puntaje de factores tendencia+valuación con pesos fijos,
+    calibración isotónica walk-forward, compuerta de habilidad, evidencia).
   - `app/services/diagnosis.py` — etapa + momento fundamental + probabilidades por activo.
   - `app/services/` — pipeline de ingesta y cálculo de snapshots; `app/api/` — rutas `/api/*`.
   - `app/db/timescale.sql` — hypertables, compresión y agregado continuo para producción.
@@ -48,6 +49,8 @@ correr una ingesta y `psql "$URL" -f backend/app/db/timescale.sql`.
 - Los tests de proveedores usan `httpx.MockTransport` con payloads del formato de cada API.
 - Fundamentales de ADRs: el precio del ADR se divide por el ratio (`per_share_close`) porque los 20-F
   informan acciones ordinarias.
+- No reemplazar el puntaje de factores por un modelo ajustado sin mostrar que mejora AUC y Brier skill
+  fuera de muestra (walk-forward) en la historia larga; con los datos actuales los ajustados no ganaron.
 - Las probabilidades se reportan siempre con métricas fuera de muestra; nunca evaluar el modelo con datos
   usados para entrenarlo. Features solo con información disponible a la fecha (`test_no_lookahead_in_features`).
 - Las fallas de red levantan `SourceUnavailableError` (cuentan para el circuit breaker); un símbolo

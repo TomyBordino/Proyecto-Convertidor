@@ -1,3 +1,4 @@
+from datetime import date
 from functools import lru_cache
 from typing import Literal
 
@@ -21,7 +22,9 @@ class Settings(BaseSettings):
     yahoo_fallback: bool = True
     # Plazo de liquidación de las series de BYMA Data ("24HS" desde la migración a T+1).
     byma_settlement: str = "24HS"
-    history_days: int = 2200  # ~6 años: 5 balances anuales con precio
+    history_days: int = 2200  # ~6 años de historia en BYMA
+    # Historia de los subyacentes en EE. UU. para entrenar y validar el modelo (22+ años).
+    model_history_start: date = date(2004, 1, 1)
 
     # Ingesta diaria (hora Buenos Aires) luego del cierre de BYMA (17:00).
     scheduler_enabled: bool = False

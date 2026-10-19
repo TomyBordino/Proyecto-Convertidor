@@ -47,7 +47,8 @@ export interface Driver {
 export interface Prediction {
   horizon: number;
   probability: number;
-  raw_score: number;
+  score: number;
+  has_skill: boolean;
   base_rate: number | null;
   similar: {
     hit_rate: number | null;
@@ -122,7 +123,11 @@ export interface HorizonReport {
   top_quintile_median_return?: number;
   bottom_quintile_median_return?: number;
   calibration?: { pred: number; observed: number; n: number }[];
-  coefficients?: Record<string, number>;
+  has_skill?: boolean;
+  method?: string;
+  weights?: { trend: number; value: number; trend_factors: string[]; value_factors: string[] };
+  by_year?: { year: number; auc: number; base_rate: number; n: number }[];
+  years_auc_above_half?: number;
 }
 
 export interface ModelReport {

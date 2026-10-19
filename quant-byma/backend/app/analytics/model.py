@@ -1,21 +1,26 @@
 """Modelo probabilístico: P(precio en USD más alto dentro de H ruedas).
 
-Diseño (pensado para que la probabilidad sea verificable, no una opinión):
+El puntaje es un modelo de factores con pesos fijos (sin parámetros ajustados), porque en
+la validación con datos reales los modelos ajustados (logística, gradient boosting) no le
+ganaron a la tasa base fuera de muestra, mientras que los factores clásicos sí:
 
-1. Panel de muestras (activo, fecha) cada `STEP` ruedas con features que usan solo
-   información disponible a esa fecha: momentum, posición vs medias, osciladores,
-   volatilidad, etapa de Weinstein y fundamentales "point in time" (cada balance se
-   considera conocido `FILING_LAG_DAYS` días después del cierre del ejercicio).
-   Los fundamentales se convierten a percentiles de corte transversal por fecha.
-2. Etiqueta: retorno en USD a H ruedas > 0.
-3. Validación walk-forward: para cada año Y se entrena con muestras previas a Y (con un
-   embargo de H ruedas para que ninguna etiqueta del entrenamiento mire dentro de Y) y se
-   predice Y. Todas las métricas reportadas son fuera de muestra.
-4. Calibración isotónica ajustada sobre esas predicciones fuera de muestra: un 60%
-   significa "en el pasado, de cada 10 situaciones con este puntaje, ~6 subieron".
-5. Evidencia por predicción: frecuencia histórica de acierto de situaciones con puntaje
-   similar, intervalo de Wilson con tamaño de muestra efectivo (las ventanas de H ruedas
-   se superponen, así que n_efectivo = n × STEP / H).
+    tendencia  = promedio de percentiles (por fecha) de pendiente de la SMA200, momentum
+                 12-1 meses, distancia a la SMA200 y distancia al máximo de 52 semanas
+    valuación  = promedio de percentiles de earnings, book, FCF y sales yield
+    puntaje    = 50% tendencia + 50% valuación (solo tendencia si no hay balances)
+
+Tendencia y valuación se compensan: el momentum falla en los rebotes posteriores a las
+crisis, justo cuando la valuación funciona ("Value and Momentum Everywhere", Asness,
+Moskowitz y Pedersen, 2013).
+
+Probabilidad: calibración isotónica del puntaje contra la frecuencia observada de suba.
+Validación walk-forward: cada año se califica con una calibración ajustada solo con años
+anteriores (con embargo de H ruedas), y todas las métricas reportadas son de esas
+predicciones fuera de muestra. Si un horizonte no supera a la tasa base (Brier skill ≤ 0
+o AUC < MIN_AUC) se marca "sin ventaja demostrada" y se informa la tasa base.
+
+Las features usan solo información disponible a cada fecha: cada balance se considera
+conocido FILING_LAG_DAYS días después del cierre del ejercicio.
 """
 
 from __future__ import annotations
@@ -26,10 +31,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, roc_auc_score
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
 
 from app.analytics.regime import stage_series
 from app.analytics.technical import bollinger, rsi, sma
@@ -39,6 +41,11 @@ STEP = 5  # una muestra por semana y activo
 FILING_LAG_DAYS = 100
 MIN_TRAIN_SAMPLES = 2000
 MIN_TRAIN_YEARS = 2
+MIN_AUC = 0.51
+
+TREND_FACTORS = ("slope_200", "mom_12_1", "dist_sma200", "dd_252")
+VALUE_FACTORS = ("r_earnings_yield", "r_book_yield", "r_fcf_yield", "r_sales_yield")
+TREND_WEIGHT = 0.5
 
 TECH_FEATURES = {
     "mom_20": "Retorno del último mes",
@@ -64,7 +71,19 @@ FUND_FEATURES = {
     "r_low_leverage": "Bajo endeudamiento (percentil)",
     "has_fundamentals": "Tiene balances publicados",
 }
-FEATURES = {**TECH_FEATURES, **STAGE_FEATURES, **FUND_FEATURES}
+FEATURES = {
+    **TECH_FEATURES,
+    **STAGE_FEATURES,
+    **FUND_FEATURES,
+    "slope_200": "Tendencia: pendiente de la media de 200",
+    "mom_12_1": "Tendencia: momentum 12 meses (sin el último)",
+    "dist_sma200": "Tendencia: distancia a la media de 200",
+    "dd_252": "Tendencia: cercanía al máximo de 52 semanas",
+    "r_earnings_yield": "Valuación: barata por P/E",
+    "r_book_yield": "Valuación: barata por P/B",
+    "r_fcf_yield": "Valuación: rendimiento de flujo de caja",
+    "r_sales_yield": "Valuación: barata por P/S",
+}
 FEATURE_NAMES = list(FEATURES)
 
 
@@ -204,6 +223,15 @@ def build_panel(assets: list[AssetInput], step: int = STEP) -> pd.DataFrame:
     panel["has_fundamentals"] = panel["earnings_yield"].notna().astype(float)
     for col in ranks:
         panel[col] = panel[col].fillna(0.5)
+    for f in TREND_FACTORS:
+        panel[f"q_{f}"] = panel[f].groupby(panel["date"]).rank(pct=True)
+    panel["trend_score"] = panel[[f"q_{f}" for f in TREND_FACTORS]].mean(axis=1)
+    value = panel[list(VALUE_FACTORS)].mean(axis=1)
+    has = panel["has_fundamentals"] > 0
+    panel["value_score"] = value.where(has)
+    panel["score"] = panel["trend_score"].where(
+        ~has, TREND_WEIGHT * panel["trend_score"] + (1 - TREND_WEIGHT) * value
+    )
     return panel
 
 
@@ -219,37 +247,20 @@ def wilson_interval(p: float, n: float, z: float = 1.96) -> tuple[float, float]:
     return max(0.0, center - half), min(1.0, center + half)
 
 
-def _winsor_bounds(X: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
-    return X.quantile(0.01), X.quantile(0.99)
-
-
-def _make_model() -> object:
-    return make_pipeline(StandardScaler(), LogisticRegression(C=0.3, max_iter=1000))
-
-
-def _design(panel: pd.DataFrame, bounds: tuple[pd.Series, pd.Series]) -> pd.DataFrame:
-    X = panel[FEATURE_NAMES].astype(float)
-    tech = list(TECH_FEATURES)
-    X[tech] = X[tech].clip(bounds[0][tech], bounds[1][tech], axis=1)
-    return X.fillna(0.0)
-
-
 @dataclass
 class HorizonModel:
     horizon: int
     report: dict
-    model: object | None = None
-    bounds: tuple[pd.Series, pd.Series] | None = None
     calibrator: IsotonicRegression | None = None
-    oos: pd.DataFrame | None = None  # predicciones fuera de muestra (raw, y, fwd)
+    oos: pd.DataFrame | None = None  # predicciones fuera de muestra (score, prob, y, fwd)
+    has_skill: bool = False
 
 
 def _calibration_table(p: np.ndarray, y: np.ndarray, bins: int = 10) -> list[dict]:
-    edges = np.quantile(p, np.linspace(0, 1, bins + 1))
-    edges[0], edges[-1] = 0.0, 1.0
-    idx = np.clip(np.searchsorted(edges, p, side="right") - 1, 0, bins - 1)
+    edges = np.unique(np.quantile(p, np.linspace(0, 1, bins + 1)))
+    idx = np.clip(np.searchsorted(edges, p, side="right") - 1, 0, len(edges) - 2)
     out = []
-    for b in range(bins):
+    for b in range(len(edges) - 1):
         m = idx == b
         if m.sum() == 0:
             continue
@@ -263,74 +274,88 @@ def _calibration_table(p: np.ndarray, y: np.ndarray, bins: int = 10) -> list[dic
     return out
 
 
+def _isotonic() -> IsotonicRegression:
+    return IsotonicRegression(out_of_bounds="clip", y_min=0.02, y_max=0.98, increasing=True)
+
+
 def train_horizon(panel: pd.DataFrame, horizon: int) -> HorizonModel:
     target = f"fwd_{horizon}"
-    tech = list(TECH_FEATURES)
-    data = panel.dropna(subset=[*tech, "stage", target]).copy()
+    data = panel.dropna(subset=["score", "stage", target]).copy()
     data["y"] = (data[target] > 0).astype(int)
-    report: dict = {"horizon": horizon, "n_samples": int(len(data))}
+    report: dict = {
+        "horizon": horizon,
+        "n_samples": int(len(data)),
+        "method": "factores con pesos fijos + calibración isotónica walk-forward",
+        "weights": {
+            "trend": TREND_WEIGHT,
+            "value": 1 - TREND_WEIGHT,
+            "trend_factors": list(TREND_FACTORS),
+            "value_factors": list(VALUE_FACTORS),
+        },
+    }
     if len(data) < MIN_TRAIN_SAMPLES or data["y"].nunique() < 2:
         report["status"] = f"muestras insuficientes ({len(data)})"
         return HorizonModel(horizon, report)
 
     years = sorted(data["date"].dt.year.unique())
     embargo = pd.Timedelta(days=int(horizon * 1.5) + 7)  # ruedas → días corridos
-    oos_parts = []
+    parts, by_year = [], []
     for y in years[MIN_TRAIN_YEARS:]:
         test = data[data["date"].dt.year == y]
         train = data[data["date"] < pd.Timestamp(year=y, month=1, day=1) - embargo]
         if len(train) < MIN_TRAIN_SAMPLES or train["y"].nunique() < 2 or test.empty:
             continue
-        bounds = _winsor_bounds(train[tech])
-        model = _make_model()
-        model.fit(_design(train, bounds), train["y"])  # type: ignore[attr-defined]
-        raw = model.predict_proba(_design(test, bounds))[:, 1]  # type: ignore[attr-defined]
-        part = test[["date", "ticker", "stage", "y", target]].copy()
-        part["raw"] = raw
+        iso = _isotonic().fit(train["score"], train["y"])
+        part = test[["date", "ticker", "stage", "score", "y", target]].copy()
+        part["prob"] = iso.predict(test["score"])
         part["train_base"] = train["y"].mean()
-        oos_parts.append(part)
-
-    if not oos_parts:
+        parts.append(part)
+        if test["y"].nunique() == 2:
+            by_year.append(
+                {
+                    "year": int(y),
+                    "auc": round(float(roc_auc_score(test["y"], test["score"])), 4),
+                    "base_rate": round(float(test["y"].mean()), 4),
+                    "n": int(len(test)),
+                }
+            )
+    if not parts:
         report["status"] = "historia insuficiente para validación walk-forward"
         return HorizonModel(horizon, report)
-    oos = pd.concat(oos_parts).rename(columns={target: "fwd"})
-    y_oos, p_oos = oos["y"].to_numpy(), oos["raw"].to_numpy()
 
-    calibrator = IsotonicRegression(out_of_bounds="clip", y_min=0.01, y_max=0.99)
-    calibrator.fit(p_oos, y_oos)
-
-    brier = brier_score_loss(y_oos, p_oos)
-    brier_base = brier_score_loss(y_oos, oos["train_base"].to_numpy())
-    q = pd.qcut(oos["raw"].rank(method="first"), 5, labels=False)
+    oos = pd.concat(parts).rename(columns={target: "fwd"})
+    y_oos = oos["y"].to_numpy()
+    brier = brier_score_loss(y_oos, oos["prob"])
+    brier_base = brier_score_loss(y_oos, oos["train_base"])
+    auc = float(roc_auc_score(y_oos, oos["score"]))
+    skill = float(1 - brier / brier_base)
+    has_skill = skill > 0 and auc >= MIN_AUC
+    q = pd.qcut(oos["score"].rank(method="first"), 5, labels=False)
     top, bottom = oos[q == 4], oos[q == 0]
     report.update(
         {
             "status": "ok",
+            "has_skill": has_skill,
             "oos_samples": int(len(oos)),
             "oos_effective": round(len(oos) * STEP / horizon),
             "oos_years": sorted(int(v) for v in oos["date"].dt.year.unique()),
-            "base_rate": round(float(y_oos.mean()), 4),
-            "auc": round(float(roc_auc_score(y_oos, p_oos)), 4),
+            "base_rate": round(float(data["y"].mean()), 4),
+            "auc": round(auc, 4),
             "brier": round(float(brier), 5),
             "brier_base": round(float(brier_base), 5),
-            "brier_skill": round(float(1 - brier / brier_base), 4),
+            "brier_skill": round(skill, 4),
+            "years_auc_above_half": sum(1 for r in by_year if r["auc"] > 0.5),
+            "by_year": by_year,
             "top_quintile_hit": round(float(top["y"].mean()), 4),
             "bottom_quintile_hit": round(float(bottom["y"].mean()), 4),
             "top_quintile_median_return": round(float(top["fwd"].median()), 4),
             "bottom_quintile_median_return": round(float(bottom["fwd"].median()), 4),
-            "calibration": _calibration_table(p_oos, y_oos),
+            "calibration": _calibration_table(oos["prob"].to_numpy(), y_oos),
         }
     )
-
-    # Modelo final: todo lo etiquetado (las etiquetas ya excluyen el futuro no observado).
-    bounds = _winsor_bounds(data[tech])
-    model = _make_model()
-    model.fit(_design(data, bounds), data["y"])  # type: ignore[attr-defined]
-    lr = model.steps[-1][1]  # type: ignore[attr-defined]
-    report["coefficients"] = {
-        f: round(float(c), 4) for f, c in zip(FEATURE_NAMES, lr.coef_[0], strict=True)
-    }
-    return HorizonModel(horizon, report, model, bounds, calibrator, oos)
+    # Calibración final con toda la historia etiquetada.
+    calibrator = _isotonic().fit(data["score"], data["y"])
+    return HorizonModel(horizon, report, calibrator, oos, has_skill)
 
 
 def stage_statistics(panel: pd.DataFrame, horizon: int) -> list[dict]:
@@ -357,57 +382,74 @@ def stage_statistics(panel: pd.DataFrame, horizon: int) -> list[dict]:
     return out
 
 
-def predict(hm: HorizonModel, rows: pd.DataFrame, top_k: int = 3) -> list[dict | None]:
+def _drivers(row: pd.Series) -> list[dict]:
+    """Aporte de cada factor al puntaje: peso × (percentil − 0,5)."""
+    has_value = row.get("has_fundamentals", 0) > 0
+    w_trend = TREND_WEIGHT if has_value else 1.0
+    out = []
+    for f in TREND_FACTORS:
+        v = row.get(f"q_{f}")
+        if v is not None and np.isfinite(v):
+            out.append((f, float(v), w_trend / len(TREND_FACTORS) * (float(v) - 0.5)))
+    if has_value:
+        for f in VALUE_FACTORS:
+            v = row.get(f)
+            if v is not None and np.isfinite(v):
+                out.append(
+                    (f, float(v), (1 - TREND_WEIGHT) / len(VALUE_FACTORS) * (float(v) - 0.5))
+                )
+    return [
+        {"feature": f, "label": FEATURES.get(f, f), "value": round(v, 4), "impact": round(i, 4)}
+        for f, v, i in sorted(out, key=lambda x: -abs(x[2]))
+    ]
+
+
+def predict(hm: HorizonModel, rows: pd.DataFrame) -> list[dict | None]:
     """Probabilidad calibrada, evidencia histórica y factores que la explican."""
-    if hm.model is None or hm.bounds is None or hm.calibrator is None or hm.oos is None:
+    if hm.calibrator is None or hm.oos is None:
         return [None] * len(rows)
-    X = _design(rows, hm.bounds)
-    raw = hm.model.predict_proba(X)[:, 1]  # type: ignore[attr-defined]
-    cal = hm.calibrator.predict(raw)
-    scaler, lr = hm.model.steps[0][1], hm.model.steps[1][1]  # type: ignore[attr-defined]
-    z = (X.to_numpy() - scaler.mean_) / scaler.scale_
-    contrib = z * lr.coef_[0]
+    base = hm.report.get("base_rate")
     oos = hm.oos
     out: list[dict | None] = []
-    for i in range(len(rows)):
-        # Situaciones similares: predicciones fuera de muestra con puntaje cercano.
-        window = 0.03
-        similar = oos[(oos["raw"] - raw[i]).abs() <= window]
-        while len(similar) < 200 and window < 0.2:
-            window += 0.02
-            similar = oos[(oos["raw"] - raw[i]).abs() <= window]
-        hit = float(similar["y"].mean()) if len(similar) else float("nan")
-        n_eff = len(similar) * STEP / hm.horizon
-        lo, hi = wilson_interval(hit, n_eff) if len(similar) else (0.0, 1.0)
-        order = np.argsort(contrib[i])
-        drivers = [
-            {
-                "feature": FEATURE_NAMES[j],
-                "label": FEATURES[FEATURE_NAMES[j]],
-                "value": _f(rows.iloc[i][FEATURE_NAMES[j]]),
-                "impact": round(float(contrib[i, j]), 4),
-            }
-            for j in [*order[::-1][:top_k], *order[:top_k]]
-            if abs(contrib[i, j]) > 0.01
-        ]
+    for _, row in rows.iterrows():
+        score = row.get("score")
+        if score is None or not np.isfinite(score):
+            out.append(None)
+            continue
+        if hm.has_skill or base is None:
+            prob = float(hm.calibrator.predict([score])[0])
+        else:
+            prob = float(base)  # sin ventaja demostrada: la mejor estimación es la tasa base
+        # Situaciones similares: muestras fuera de muestra con puntaje cercano.
+        window = 0.01
+        similar = oos[(oos["score"] - score).abs() <= window]
+        while len(similar) < 300 and window < 0.1:
+            window += 0.01
+            similar = oos[(oos["score"] - score).abs() <= window]
+        n = len(similar)
+        hit = float(similar["y"].mean()) if n else float("nan")
+        n_eff = n * STEP / hm.horizon
+        lo, hi = wilson_interval(hit, n_eff) if n else (0.0, 1.0)
+        drivers = _drivers(row)
         out.append(
             {
                 "horizon": hm.horizon,
-                "probability": round(float(cal[i]), 4),
-                "raw_score": round(float(raw[i]), 4),
-                "base_rate": hm.report.get("base_rate"),
+                "probability": round(prob, 4),
+                "score": round(float(score), 4),
+                "has_skill": hm.has_skill,
+                "base_rate": base,
                 "similar": {
-                    "hit_rate": round(hit, 4) if len(similar) else None,
+                    "hit_rate": round(hit, 4) if n else None,
                     "ci_low": round(lo, 4),
                     "ci_high": round(hi, 4),
-                    "n": int(len(similar)),
+                    "n": int(n),
                     "n_effective": round(n_eff),
-                    "median_return": _f(similar["fwd"].median()) if len(similar) else None,
-                    "p25_return": _f(similar["fwd"].quantile(0.25)) if len(similar) else None,
-                    "p75_return": _f(similar["fwd"].quantile(0.75)) if len(similar) else None,
+                    "median_return": _f(similar["fwd"].median()) if n else None,
+                    "p25_return": _f(similar["fwd"].quantile(0.25)) if n else None,
+                    "p75_return": _f(similar["fwd"].quantile(0.75)) if n else None,
                 },
-                "drivers_up": [d for d in drivers if d["impact"] > 0],
-                "drivers_down": [d for d in drivers if d["impact"] < 0],
+                "drivers_up": [d for d in drivers if d["impact"] > 0.005][:4],
+                "drivers_down": [d for d in drivers if d["impact"] < -0.005][:4],
             }
         )
     return out

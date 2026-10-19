@@ -60,7 +60,8 @@ def test_walk_forward_model_learns_persistent_signal_and_is_calibrated():
     hm = train_horizon(panel, 20)
     r = hm.report
     assert r["status"] == "ok"
-    assert r["auc"] > 0.6  # el momentum persistente es predecible
+    assert r["auc"] > 0.55  # la tendencia persistente es predecible
+    assert r["has_skill"] and r["brier_skill"] > 0
     assert r["top_quintile_hit"] > r["bottom_quintile_hit"]
     # La calibración fuera de muestra es monótona creciente en promedio.
     obs = [b["observed"] for b in r["calibration"]]
@@ -71,6 +72,10 @@ def test_walk_forward_model_learns_persistent_signal_and_is_calibrated():
     p = preds[0]
     assert p["similar"]["n"] >= 200 and p["similar"]["ci_low"] <= p["similar"]["ci_high"]
     assert p["drivers_up"] or p["drivers_down"]
+    assert all(
+        d["feature"] in ("slope_200", "mom_12_1", "dist_sma200", "dd_252")
+        for d in p["drivers_up"] + p["drivers_down"]
+    )
     stats = stage_statistics(panel, 20)
     assert {st["stage"] for st in stats} <= {1, 2, 3, 4}
 
@@ -92,7 +97,7 @@ def test_no_lookahead_in_features():
 def test_insufficient_data_returns_no_model():
     panel = build_panel(_synthetic_assets(n_assets=2, n_days=400))
     hm = train_horizon(panel, 60)
-    assert hm.model is None and "insuficientes" in hm.report["status"]
+    assert hm.calibrator is None and "insuficientes" in hm.report["status"]
     assert predict(hm, panel.tail(1)) == [None]
 
 
@@ -111,3 +116,20 @@ def test_bias(prob, ci, expected):
         "similar": {"n": 500, "ci_low": ci[0], "ci_high": ci[1]},
     }
     assert bias(pred) == expected
+
+
+def test_no_skill_falls_back_to_base_rate():
+    """Con caminatas aleatorias no hay ventaja: la probabilidad debe ser la tasa base."""
+    rng = np.random.default_rng(7)
+    assets = [
+        AssetInput(f"R{i}", s(100 * np.exp(np.cumsum(rng.normal(0.0003, 0.01, 1500)))), None)
+        for i in range(30)
+    ]
+    panel = build_panel(assets)
+    hm = train_horizon(panel, 60)
+    latest = panel.sort_values("date").groupby("ticker").tail(1)
+    preds = predict(hm, latest)
+    if not hm.has_skill:
+        assert {p["probability"] for p in preds} == {hm.report["base_rate"]}
+    else:  # una ventaja espuria debería ser mínima
+        assert hm.report["brier_skill"] < 0.01

@@ -53,7 +53,12 @@ def ingest_job(provider_kind: str | None = None) -> dict:
     settings = get_settings()
     provider = build_provider(provider_kind or settings.data_provider)
     with session_factory()() as session:
-        result = run_ingestion(session, provider, history_days=settings.history_days)
+        result = run_ingestion(
+            session,
+            provider,
+            history_days=settings.history_days,
+            us_history_start=settings.model_history_start,
+        )
     log.info("Ingesta %s: %s", provider.name, {k: v for k, v in result.items() if k != "errors"})
     return result
 

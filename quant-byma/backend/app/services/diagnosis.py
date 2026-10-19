@@ -94,6 +94,8 @@ def bias(pred: dict | None) -> tuple[str, bool]:
     de las situaciones similares no contiene a la tasa base)."""
     if not pred or pred.get("base_rate") is None:
         return "Sin datos", False
+    if pred.get("has_skill") is False:
+        return "Neutral", False  # sin ventaja demostrada en este horizonte
     p, base = pred["probability"], pred["base_rate"]
     sim = pred["similar"]
     significant = sim["n"] > 0 and (sim["ci_low"] > base or sim["ci_high"] < base)
@@ -119,7 +121,12 @@ def summary(ticker: str, d: dict) -> str:
             + "."
         )
     pred = d.get("predictions", {}).get(str(PRIMARY_HORIZON))
-    if pred:
+    if pred and pred.get("has_skill") is False:
+        parts.append(
+            f"A {PRIMARY_HORIZON} ruedas el modelo no demostró ventaja sobre la tasa base "
+            f"({pred['base_rate']:.0%}), que es la mejor estimación disponible."
+        )
+    elif pred:
         sim = pred["similar"]
         parts.append(
             f"Probabilidad de cotizar más alto en {PRIMARY_HORIZON} ruedas: "

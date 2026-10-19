@@ -36,11 +36,11 @@ export function ModelView() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Modelo y validación</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Las probabilidades salen de una regresión logística entrenada con {data.n_assets} activos entre {data.first_date} y{" "}
-          {data.last_date}. Cada año se predice con un modelo entrenado solo con años anteriores (walk-forward, con un
-          período de embargo), y todas las métricas de esta página se calculan sobre esas predicciones fuera de muestra.
-          Luego se calibra con regresión isotónica: un 60% significa que, en el pasado, situaciones con ese puntaje
-          subieron 6 de cada 10 veces.
+          El puntaje es un modelo de factores con pesos fijos (50% tendencia, 50% valuación) y la probabilidad es su
+          calibración contra lo que pasó realmente, con {data.n_assets} activos entre {data.first_date} y {data.last_date}.
+          Cada año se califica con una calibración ajustada solo con años anteriores (walk-forward, con embargo), y todas
+          las métricas de esta página salen de esas predicciones fuera de muestra. Un 60% significa que, en el pasado,
+          situaciones con ese puntaje subieron 6 de cada 10 veces.
         </p>
       </div>
 
@@ -58,6 +58,11 @@ export function ModelView() {
         </Card>
       ) : (
         <>
+          <p className={r.has_skill ? "text-sm text-positive" : "text-sm text-warning"}>
+            {r.has_skill
+              ? `Ventaja demostrada a ${H_LABEL[h]}: supera a la tasa base fuera de muestra (AUC > 0,5 en ${r.years_auc_above_half} de ${r.by_year?.length} años).`
+              : `Sin ventaja demostrada a ${H_LABEL[h]}: en este horizonte se informa la tasa base en lugar de una probabilidad del modelo.`}
+          </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Metric
               title="Tasa base"
@@ -154,13 +159,39 @@ export function ModelView() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Peso de cada factor</CardTitle>
+              <CardTitle>Estabilidad año por año</CardTitle>
               <CardDescription>
-                Coeficientes del modelo final sobre variables estandarizadas: positivo aumenta la probabilidad de suba.
+                AUC fuera de muestra de cada año (0,5 = azar). Los años flojos de la tendencia suelen ser rebotes
+                posteriores a crisis, cuando la valuación compensa.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Coefficients coefs={r.coefficients ?? {}} labels={data.features} />
+              <YearBars rows={r.by_year ?? []} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Composición del puntaje</CardTitle>
+              <CardDescription>Pesos fijos, elegidos por evidencia académica y no ajustados a estos datos.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 text-sm sm:grid-cols-2">
+              <div>
+                <p className="font-medium">Tendencia · {fmtProb(r.weights?.trend)}</p>
+                <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+                  {(r.weights?.trend_factors ?? []).map((f) => (
+                    <li key={f}>{data.features[f] ?? f}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="font-medium">Valuación · {fmtProb(r.weights?.value)} (si hay balances)</p>
+                <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+                  {(r.weights?.value_factors ?? []).map((f) => (
+                    <li key={f}>{data.features[f] ?? f}</li>
+                  ))}
+                </ul>
+              </div>
             </CardContent>
           </Card>
         </>
@@ -169,10 +200,11 @@ export function ModelView() {
       <Card>
         <CardContent className="space-y-2 p-4 text-xs text-muted-foreground">
           <p>
-            <b className="text-foreground">Cómo leerlo.</b> El modelo estima la probabilidad de que el precio en dólares
-            esté más alto al final del horizonte. Usa momentum, posición respecto de sus medias, osciladores, volatilidad,
-            la etapa de Weinstein y fundamentales «point in time» (cada balance cuenta recién 100 días después del cierre
-            del ejercicio, para no usar datos que el mercado todavía no tenía).
+            <b className="text-foreground">Por qué factores fijos.</b> Con estos datos se probaron regresión logística y
+            gradient boosting con muchas variables: ninguno le ganó a la tasa base fuera de muestra. Los factores clásicos
+            de tendencia y valuación sí, y se compensan entre sí («Value and Momentum Everywhere», Asness, Moskowitz y
+            Pedersen, 2013). Los balances cuentan recién 100 días después del cierre del ejercicio, para no usar datos que
+            el mercado todavía no tenía.
           </p>
           <p>
             <b className="text-foreground">Límites.</b> Las ventanas de retorno se superponen, por eso los intervalos usan
@@ -197,23 +229,25 @@ function Metric({ title, value, hint }: { title: string; value: string; hint: st
   );
 }
 
-function Coefficients({ coefs, labels }: { coefs: Record<string, number>; labels: Record<string, string> }) {
-  const rows = Object.entries(coefs).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-  const max = Math.max(0.01, ...rows.map(([, v]) => Math.abs(v)));
+function YearBars({ rows }: { rows: { year: number; auc: number; n: number }[] }) {
   return (
-    <ul className="grid gap-x-8 gap-y-1.5 text-sm md:grid-cols-2">
-      {rows.map(([k, v]) => (
-        <li key={k} className="grid grid-cols-[1fr_120px_50px] items-center gap-3">
-          <span className="truncate">{labels[k] ?? k}</span>
-          <div className="relative h-1.5 rounded-full bg-muted">
-            <div
-              className={v >= 0 ? "absolute left-1/2 h-full rounded-r-full bg-positive" : "absolute right-1/2 h-full rounded-l-full bg-negative"}
-              style={{ width: `${(Math.abs(v) / max) * 50}%` }}
-            />
+    <div className="flex h-40 items-end gap-1">
+      {rows.map((r) => {
+        const d = r.auc - 0.5;
+        const h = Math.min(100, (Math.abs(d) / 0.15) * 100);
+        return (
+          <div key={r.year} className="flex h-full flex-1 flex-col items-center justify-end" title={`${r.year}: AUC ${r.auc.toFixed(3)} (n=${r.n})`}>
+            <div className="flex h-1/2 w-full items-end">
+              {d > 0 && <div className="w-full rounded-t-sm bg-positive" style={{ height: `${h}%` }} />}
+            </div>
+            <div className="h-px w-full bg-border" />
+            <div className="flex h-1/2 w-full items-start">
+              {d < 0 && <div className="w-full rounded-b-sm bg-negative" style={{ height: `${h}%` }} />}
+            </div>
+            <span className="mt-1 text-[10px] text-muted-foreground">{String(r.year).slice(2)}</span>
           </div>
-          <span className="tabular text-right text-muted-foreground">{v.toFixed(2)}</span>
-        </li>
-      ))}
-    </ul>
+        );
+      })}
+    </div>
   );
 }

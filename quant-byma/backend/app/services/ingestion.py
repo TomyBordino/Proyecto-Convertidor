@@ -128,6 +128,18 @@ def _fetch_window(session: Session, inst: Instrument, market: str, start: date) 
     return max(start, last - timedelta(days=INCREMENTAL_OVERLAP_DAYS)) if last else start
 
 
+def _us_window(session: Session, inst: Instrument, us_start: date) -> date:
+    """Incremental si ya hay historia larga en EE. UU.; completa si falta el tramo viejo."""
+    first = session.scalar(
+        select(func.min(PriceBar.day)).where(
+            PriceBar.instrument_id == inst.id, PriceBar.market == "US"
+        )
+    )
+    if first is None or first > us_start + timedelta(days=30):
+        return us_start
+    return _fetch_window(session, inst, "US", us_start)
+
+
 def _parallel(fn: Callable[[Any], Any], items: Iterable[Any], workers: int) -> list[Any]:
     """Ejecuta `fn` en paralelo devolviendo (item, resultado | excepción)."""
 
@@ -176,6 +188,16 @@ def build_market_ccl(pairs: dict[str, tuple[pd.Series, pd.Series, float, pd.Seri
     return market_ccl_series(second, vols)
 
 
+# Versiones anteriores guardaban 6 ejercicios: se refrescan una vez para tener historia larga.
+SHORT_HISTORY_PERIODS = 6
+
+
+def _stored_periods(session: Session, inst: Instrument) -> int:
+    return (
+        session.scalar(select(func.count()).where(FundamentalPeriod.instrument_id == inst.id)) or 0
+    )
+
+
 def _stale(ts: datetime | None, now: datetime, ttl: timedelta) -> bool:
     return ts is None or now - ts > ttl
 
@@ -187,9 +209,12 @@ def run_ingestion(
     history_days: int = 2200,
     universe: list[AssetSpec] | None = None,
     workers: int = 8,
+    us_history_start: date | None = None,
 ) -> dict:
     end = end or date.today()
     start = end - timedelta(days=history_days)
+    # Los subyacentes en EE. UU. se guardan con historia larga para el modelo.
+    us_start = min(start, us_history_start) if us_history_start else start
     now = datetime.now()
     errors: list[str] = []
     counts = {"instruments": 0, "bars": 0, "fundamentals": 0, "discovered": 0}
@@ -242,13 +267,15 @@ def run_ingestion(
             us_symbols[t] = [s.us_symbol]
     prefetch = getattr(provider, "prefetch_us", None)
     if prefetch:
-        prefetch(sorted({c for cands in us_symbols.values() for c in cands}), start, end)
+        prefetch(sorted({c for cands in us_symbols.values() for c in cands}), us_start, end)
+
+    us_from = {t: _us_window(session, insts[t], us_start) for t in us_symbols}
 
     def fetch_us(t: str) -> dict[str, pd.DataFrame]:
         out = {}
         for cand in us_symbols[t]:
             try:
-                out[cand] = provider.history(cand, start, end)
+                out[cand] = provider.history(cand, us_from[t], end)
             except ProviderError:
                 continue
         if not out:
@@ -263,6 +290,18 @@ def run_ingestion(
             us_data[t] = res
 
     ba_full = {t: load_bars(session, inst.id, "BA") for t, inst in insts.items()}
+
+    def us_series(t: str, cand: str) -> pd.DataFrame:
+        """Serie completa de EE. UU.: lo recién bajado + lo almacenado (si es el mismo símbolo)."""
+        fresh = us_data[t][cand]
+        if insts[t].us_symbol != cand:
+            return fresh
+        stored = load_bars(session, insts[t].id, "US")
+        if stored.empty:
+            return fresh
+        old = stored[stored.index < fresh.index.min()] if not fresh.empty else stored
+        return pd.concat([old, fresh]).sort_index()
+
     vol_ars = {t: df["close"] * df["volume"] for t, df in ba_full.items() if not df.empty}
 
     # ------------------------------------------------------- CCL con anclas
@@ -270,8 +309,8 @@ def run_ingestion(
     for t in curated:
         s = specs[t]
         if s.ratio and s.us_symbol and t in us_data and not ba_full[t].empty:
-            us = us_data[t][s.us_symbol]
-            counts["bars"] += store_bars(session, insts[t], "US", us)
+            counts["bars"] += store_bars(session, insts[t], "US", us_data[t][s.us_symbol])
+            us = us_series(t, s.us_symbol)
             anchor_pairs[t] = (ba_full[t]["close"], us["close"], s.ratio, vol_ars.get(t))
     if not anchor_pairs:
         session.rollback()
@@ -305,7 +344,8 @@ def run_ingestion(
             continue
         best = None
         notes = []
-        for cand, us in us_data.get(t, {}).items():
+        for cand in us_data.get(t, {}):
+            us = us_series(t, cand)
             est = estimate_ratio(ba["close"], us["close"], anchor_ccl)
             notes.append(f"{cand}: {est.note}")
             if est.ratio and (best is None or est.confidence > best[1].confidence):
@@ -319,7 +359,7 @@ def run_ingestion(
         inst.us_symbol, inst.ratio = cand, est.ratio
         inst.ratio_source, inst.ratio_confidence = "estimado", est.confidence
         inst.active, inst.status_note = True, None
-        counts["bars"] += store_bars(session, inst, "US", us)
+        counts["bars"] += store_bars(session, inst, "US", us_data[t][cand])
         pairs[t] = (ba["close"], us["close"], est.ratio, vol_ars.get(t))
     session.flush()
 
@@ -365,7 +405,10 @@ def run_ingestion(
         t
         for t in active
         if insts[t].sector != "ETF"
-        and _stale(insts[t].fundamentals_updated_at, now, FUNDAMENTALS_TTL)
+        and (
+            _stale(insts[t].fundamentals_updated_at, now, FUNDAMENTALS_TTL)
+            or _stored_periods(session, insts[t]) <= SHORT_HISTORY_PERIODS
+        )
     ]
     fsym = {t: insts[t].us_symbol or specs[t].ba_symbol for t in due}
     for t, res in _parallel(lambda t: provider.fundamentals(fsym[t]), due, max(1, workers // 2)):
