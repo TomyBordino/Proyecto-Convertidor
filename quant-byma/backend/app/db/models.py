@@ -10,6 +10,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Date,
     DateTime,
     Float,
@@ -46,6 +47,17 @@ class Instrument(Base):
     ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Moneda en la que el proveedor reporta los balances (USD para CEDEARs/ADRs, ARS si no).
     reporting_currency: Mapped[str] = mapped_column(String(3), default="USD")
+    # "curado": verificado en universe.py; "estimado": deducido de precios reales.
+    ratio_source: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    # 0..1: estabilidad del ratio estimado y cercanía a un valor entero.
+    ratio_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Volumen operado promedio en BYMA (ARS/día, últimas 20 ruedas).
+    avg_volume_ars: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # False si el activo se descubrió pero no pudo validarse (sin subyacente, ratio inestable).
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    status_note: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    metadata_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fundamentals_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     prices: Mapped[list[PriceBar]] = relationship(back_populates="instrument")
 
@@ -144,3 +156,14 @@ class IngestionRun(Base):
     provider: Mapped[str] = mapped_column(String(16))
     status: Mapped[str] = mapped_column(String(16))
     message: Mapped[str] = mapped_column(String(512), default="")
+
+
+class ModelRun(Base):
+    """Resultado del entrenamiento del modelo probabilístico (métricas fuera de muestra)."""
+
+    __tablename__ = "model_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    as_of: Mapped[date] = mapped_column(Date)
+    report: Mapped[dict] = mapped_column(JSON)

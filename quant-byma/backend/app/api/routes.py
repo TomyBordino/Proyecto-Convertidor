@@ -25,9 +25,8 @@ from app.api.schemas import (
     SavedFilterOut,
 )
 from app.config import get_settings
-from app.db.models import IngestionRun, Instrument, SavedFilter, ScoreSnapshot
+from app.db.models import IngestionRun, Instrument, ModelRun, SavedFilter, ScoreSnapshot
 from app.db.session import get_session
-from app.ingestion.ccl import implied_ccl_series
 from app.ingestion.providers import build_provider
 from app.services.analytics import (
     analysis_series,
@@ -36,7 +35,7 @@ from app.services.analytics import (
     usd_statements,
 )
 from app.services.data import instrument_by_ticker, load_bars, load_fx, load_statements, to_usd_ccl
-from app.services.ingestion import IngestionError, run_ingestion
+from app.services.ingestion import IngestionError, implied_with_ratio_history, run_ingestion
 
 router = APIRouter(prefix="/api")
 SessionDep = Depends(get_session)
@@ -107,10 +106,13 @@ def rankings(
     min_score: float = Query(0, ge=0, le=100),
     sort_by: str = "composite_score",
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=1000),
+    min_volume: float = Query(0, ge=0, description="Volumen promedio mínimo en ARS/día"),
 ) -> RankingsResponse:
     day, rows = _snapshot_rows(session)
-    conditions = [{"field": "composite_score", "op": "gte", "value": min_score}]
+    conditions: list[dict] = [{"field": "composite_score", "op": "gte", "value": min_score}]
+    if min_volume > 0:
+        conditions.append({"field": "avg_volume_ars", "op": "gte", "value": min_volume})
     if kind:
         conditions.append({"field": "kind", "op": "eq", "value": kind})
     if sector:
@@ -129,6 +131,15 @@ def rankings(
         count=len(items),
         items=items,
     )
+
+
+@router.get("/model")
+def model_report(session: Session = SessionDep) -> dict:
+    """Métricas fuera de muestra, calibración y estadística por etapa del último modelo."""
+    run = session.scalar(select(ModelRun).order_by(ModelRun.as_of.desc(), ModelRun.id.desc()))
+    if run is None:
+        raise HTTPException(404, "Todavía no se entrenó el modelo: ejecutá una ingesta")
+    return run.report
 
 
 @router.post("/screener/run", response_model=RankingsResponse)
@@ -154,6 +165,11 @@ def instruments(session: Session = SessionDep) -> list[dict]:
     rows = session.scalars(select(Instrument).order_by(Instrument.kind, Instrument.ticker)).all()
     return [
         {
+            "active": i.active is not False,
+            "status_note": i.status_note,
+            "ratio_source": i.ratio_source,
+            "ratio_confidence": i.ratio_confidence,
+            "avg_volume_ars": i.avg_volume_ars,
             "ticker": i.ticker,
             "name": i.name,
             "kind": i.kind,
@@ -223,7 +239,7 @@ def asset_prices(
         for ts, r in ind.iterrows()
     ]
     implied = (
-        implied_ccl_series(ba["close"], us["close"], inst.ratio).iloc[-days:]
+        implied_with_ratio_history(ba["close"], us["close"], inst.ratio, ccl).iloc[-days:]
         if inst.ratio and not us.empty
         else pd.Series(dtype=float)
     )

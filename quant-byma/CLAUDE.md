@@ -9,8 +9,12 @@ aislada del sitio estático (ConvertiYa) que ocupa la raíz del repositorio.
     normalización ARS→USD (`normalization.py`), proveedores en `providers/`: `real.py` (cadena BYMA Data →
     data912 → Yahoo para BYMA; Tiingo → Stooq → Yahoo para EE. UU.; SEC EDGAR → FMP → Yahoo para balances;
     argentinadatos para CCL de referencia), `demo.py` (sintético, solo tests).
+  - `app/ingestion/discovery.py` — universo desde el panel en vivo de data912, overrides de subyacente,
+    estimación de ratios con precios reales e historia de cambios de ratio.
   - `app/analytics/` — `technical.py` (SMA/EMA/RSI/MACD/Bollinger/ATR), `patterns.py`, `fundamental.py`,
-    `scoring.py` (Composite Score), `screener.py` (DSL de filtros).
+    `scoring.py` (Composite Score), `screener.py` (DSL de filtros), `regime.py` (etapas de Weinstein),
+    `model.py` (panel point-in-time, logística walk-forward, calibración isotónica, evidencia).
+  - `app/services/diagnosis.py` — etapa + momento fundamental + probabilidades por activo.
   - `app/services/` — pipeline de ingesta y cálculo de snapshots; `app/api/` — rutas `/api/*`.
   - `app/db/timescale.sql` — hypertables, compresión y agregado continuo para producción.
 - `frontend/` — Next.js 16 (App Router, `cacheComponents`), Tailwind v4, componentes estilo shadcn/ui
@@ -44,6 +48,10 @@ correr una ingesta y `psql "$URL" -f backend/app/db/timescale.sql`.
 - Los tests de proveedores usan `httpx.MockTransport` con payloads del formato de cada API.
 - Fundamentales de ADRs: el precio del ADR se divide por el ratio (`per_share_close`) porque los 20-F
   informan acciones ordinarias.
+- Las probabilidades se reportan siempre con métricas fuera de muestra; nunca evaluar el modelo con datos
+  usados para entrenarlo. Features solo con información disponible a la fecha (`test_no_lookahead_in_features`).
+- Las fallas de red levantan `SourceUnavailableError` (cuentan para el circuit breaker); un símbolo
+  inexistente levanta `ProviderError` (no cuenta).
 - Toda función de ratio devuelve `None` si el dato falta o no tiene sentido económico; el scoring re-escala
   los componentes disponibles, nunca penaliza por falta de datos.
 - Respuestas JSON sin NaN/Infinity (`_f()` en `services/analytics.py`).

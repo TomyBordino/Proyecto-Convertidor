@@ -12,17 +12,19 @@ la ingesta lo registra como error del activo.
 from __future__ import annotations
 
 import logging
+import threading
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 from app.analytics.fundamental import FinancialStatement
 from app.config import Settings
-from app.ingestion.providers.base import ProviderError
+from app.ingestion.providers.base import ProviderError, SourceUnavailableError
 from app.ingestion.providers.fundamentals import FmpSource, FundamentalsSource, SecEdgarSource
 from app.ingestion.providers.fx import ArgentinaDatosCCL
 from app.ingestion.providers.http import HttpClient
@@ -34,6 +36,9 @@ from app.ingestion.providers.prices import (
     TiingoSource,
 )
 from app.ingestion.universe import UNIVERSE
+
+if TYPE_CHECKING:
+    from app.ingestion.discovery import LiveQuote
 
 log = logging.getLogger(__name__)
 
@@ -76,8 +81,18 @@ class _YahooPrices:
         from app.ingestion.providers.yahoo import YahooProvider
 
         self._y = YahooProvider()
+        self._cache: dict[str, pd.DataFrame] = {}
+
+    def prefetch(self, symbols: list[str], start: date, end: date) -> int:
+        from app.ingestion.providers.yahoo import batch_history
+
+        self._cache.update(batch_history(symbols, start, end))
+        return len(self._cache)
 
     def history(self, symbol: str, start: date, end: date) -> pd.DataFrame:
+        if symbol in self._cache:
+            df = self._cache[symbol]
+            return df[(df.index >= pd.Timestamp(start)) & (df.index <= pd.Timestamp(end))]
         return self._y.history(symbol, start, end)
 
     def fundamentals(self, symbol: str) -> list[FinancialStatement]:
@@ -100,6 +115,9 @@ class RealDataProvider:
         self.ccl_reference = ccl_reference
         self.usage: Counter[str] = Counter()  # fuente → cantidad de series servidas
         self._failures: Counter[str] = Counter()
+        self._lock = threading.Lock()
+        self.http: HttpClient | None = None
+        self._data912: Data912Source | None = None
 
     @classmethod
     def from_settings(cls, s: Settings) -> RealDataProvider:
@@ -122,7 +140,57 @@ class RealDataProvider:
             local.append(yahoo)
             us.append(yahoo)
             fund.append(yahoo)
-        return cls(local, us, fund, ArgentinaDatosCCL(http))
+        provider = cls(local, us, fund, ArgentinaDatosCCL(http))
+        provider.http = http
+        provider._data912 = local[1]  # type: ignore[assignment]
+        return provider
+
+    # ------------------------------------------------------------ universo
+
+    def discover(self) -> dict[str, list[LiveQuote]]:
+        """Especies con cotización en BYMA según el panel en vivo de data912."""
+        # Import diferido: discovery importa el paquete de proveedores.
+        from app.ingestion.discovery import discover_panel
+
+        if self.http is None:
+            return {}
+        out = {}
+        for kind, panel in (("CEDEAR", "arg_cedears"), ("LOCAL", "arg_stocks")):
+            try:
+                out[kind] = discover_panel(self.http, panel)
+            except ProviderError as exc:
+                log.warning("No se pudo descubrir el panel %s: %s", panel, exc)
+                out[kind] = []
+        return out
+
+    def register_cedears(self, tickers: set[str]) -> None:
+        """data912 separa los históricos por panel: necesita saber cuáles son CEDEARs."""
+        if self._data912 is not None:
+            self._data912.cedears |= tickers
+
+    def prefetch_us(self, symbols: list[str], start: date, end: date) -> None:
+        """Descarga en lote de Yahoo. Si funciona, Yahoo pasa a ser la fuente de EE. UU.
+        después de Tiingo (si hay key): evita cientos de requests individuales a Stooq, que
+        además es intermitente desde algunas redes."""
+        for src in list(self.us):
+            if not isinstance(src, _YahooPrices):
+                continue
+            try:
+                n = src.prefetch(symbols, start, end)
+            except Exception as exc:
+                log.warning("Descarga en lote de Yahoo falló: %s", exc)
+                return
+            log.info("Yahoo: %d series de EE. UU. descargadas en lote", n)
+            if n:
+                self.us.remove(src)
+                pos = 1 if self.us and isinstance(self.us[0], TiingoSource) else 0
+                self.us.insert(pos, src)
+            return
+
+    def metadata(self, symbol: str) -> dict:
+        from app.ingestion.providers.yahoo import metadata
+
+        return metadata(symbol)
 
     def _call(self, src: PriceSource, symbol: str, start: date, end: date) -> pd.DataFrame:
         """Llama a una fuente aplicando un circuit breaker: tras MAX_CONSECUTIVE_FAILURES
@@ -132,13 +200,19 @@ class RealDataProvider:
             raise ProviderError("deshabilitada en esta corrida por fallas consecutivas")
         try:
             df = src.history(symbol, start, end)
-        except ProviderError:
-            self._failures[src.name] += 1
+        except ProviderError as exc:
+            # Un símbolo que la fuente no tiene no indica que la fuente esté caída.
+            if isinstance(exc, SourceUnavailableError):
+                with self._lock:
+                    self._failures[src.name] += 1
             raise
-        except Exception as exc:  # una fuente rota no debe frenar la cadena
-            self._failures[src.name] += 1
+        except Exception as exc:  # errores de red de librerías de terceros (yfinance)
+            with self._lock:
+                self._failures[src.name] += 1
             raise ProviderError(f"{type(exc).__name__}: {exc}") from exc
-        self._failures[src.name] = 0
+        if not df.empty:
+            with self._lock:
+                self._failures[src.name] = 0
         return df
 
     def history(self, symbol: str, start: date, end: date) -> pd.DataFrame:
@@ -147,6 +221,9 @@ class RealDataProvider:
         chain = self.local if symbol.endswith(".BA") else self.us
         errors: list[str] = []
         result: pd.DataFrame | None = None
+        # En una actualización incremental la ventana es corta: el mínimo escala con ella.
+        expected = len(pd.bdate_range(start, end))
+        min_bars = max(1, min(MIN_BARS, expected // 2))
         for src in chain:
             try:
                 df = self._call(src, symbol, start, end)
@@ -154,7 +231,7 @@ class RealDataProvider:
                 errors.append(f"{src.name}: {exc}")
                 continue
             if result is None:
-                if len(df) < MIN_BARS:
+                if len(df) < min_bars:
                     errors.append(f"{src.name}: {len(df)} ruedas")
                     continue
                 result = df

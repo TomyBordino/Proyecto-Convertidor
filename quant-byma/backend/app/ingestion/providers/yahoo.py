@@ -36,6 +36,68 @@ ROWS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Sectores de Yahoo → nombres usados en la plataforma.
+SECTOR_ES = {
+    "Technology": "Tecnología",
+    "Communication Services": "Comunicaciones",
+    "Consumer Cyclical": "Consumo discrecional",
+    "Consumer Defensive": "Consumo básico",
+    "Financial Services": "Financiero",
+    "Energy": "Energía",
+    "Healthcare": "Salud",
+    "Industrials": "Industrial",
+    "Basic Materials": "Materiales",
+    "Real Estate": "Real Estate",
+    "Utilities": "Utilities",
+}
+
+
+def batch_history(symbols: list[str], start: date, end: date, chunk: int = 80) -> dict:
+    """Descarga diaria en lote (una request por bloque de símbolos): {símbolo: OHLCV}."""
+    import yfinance as yf
+
+    out: dict[str, pd.DataFrame] = {}
+    for i in range(0, len(symbols), chunk):
+        part = symbols[i : i + chunk]
+        raw = yf.download(
+            part,
+            start=start.isoformat(),
+            end=(end + timedelta(days=1)).isoformat(),
+            auto_adjust=False,
+            progress=False,
+            group_by="ticker",
+            threads=True,
+        )
+        if raw is None or raw.empty:
+            continue
+        for sym in part:
+            if sym not in raw.columns.get_level_values(0):
+                continue
+            df = raw[sym].rename(columns=str.lower)
+            if "close" not in df:
+                continue
+            df = df[[c for c in OHLCV_COLUMNS if c in df]].dropna(subset=["close"])
+            if df.empty:
+                continue
+            df.index = pd.DatetimeIndex(df.index).tz_localize(None).normalize()
+            out[sym] = df
+    return out
+
+
+def metadata(symbol: str) -> dict:
+    """Nombre, sector y tipo (EQUITY/ETF) de un símbolo."""
+    import yfinance as yf
+
+    info = yf.Ticker(symbol).info or {}
+    quote_type = info.get("quoteType")
+    sector = "ETF" if quote_type in ("ETF", "MUTUALFUND") else SECTOR_ES.get(info.get("sector", ""))
+    return {
+        "name": info.get("longName") or info.get("shortName"),
+        "sector": sector or info.get("sector") or "Sin clasificar",
+        "quote_type": quote_type,
+    }
+
+
 class YahooProvider:
     name = "yahoo"
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
 
+import { DiagnosisPanel } from "@/components/diagnosis-panel";
 import { FlowsChart, MultiplesChart } from "@/components/fundamentals-chart";
 import { LineChart, PriceChart, type Overlays } from "@/components/price-chart";
 import { ScoreBar } from "@/components/score-bar";
@@ -76,6 +77,8 @@ export function AssetView({ ticker }: { ticker: string }) {
         </Card>
       </div>
 
+      {d.breakdown.diagnosis && <DiagnosisPanel d={d.breakdown.diagnosis} />}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Stat label="Precio BYMA" value={fmtMoney(m.price_ars, "ARS")} />
         <Stat label="Precio USD CCL" value={fmtMoney(m.price_usd, "USD", 3)} />
@@ -142,7 +145,7 @@ export function AssetView({ ticker }: { ticker: string }) {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Desglose del score cuantitativo</h2>
+        <h2 className="text-lg font-semibold">Desglose del score cuantitativo (heurístico)</h2>
         <ScoreBreakdown detail={d} />
       </section>
 

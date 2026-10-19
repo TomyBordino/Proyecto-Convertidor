@@ -41,6 +41,16 @@ FIELDS: dict[str, tuple[str, str]] = {
     "debt_to_equity": ("Deuda/Patrimonio", "num"),
     "current_ratio": ("Current ratio", "num"),
     "altman_z": ("Altman Z", "num"),
+    "stage": ("Etapa (1 base · 2 alcista · 3 techo · 4 bajista)", "num"),
+    "substate": ("Submomento", "str"),
+    "bias": ("Sesgo del modelo", "str"),
+    "bias_significant": ("Sesgo estadísticamente significativo", "bool"),
+    "prob_up_20": ("Prob. de suba a 20 ruedas", "num"),
+    "prob_up_60": ("Prob. de suba a 60 ruedas", "num"),
+    "prob_up_120": ("Prob. de suba a 120 ruedas", "num"),
+    "valuation_state": ("Valuación vs sector", "str"),
+    "avg_volume_ars": ("Volumen promedio (ARS/día)", "num"),
+    "ratio_source": ("Origen del ratio", "str"),
     "golden_cross": ("Golden cross reciente", "bool"),
     "breakout": ("Breakout", "bool"),
     "above_sma200": ("Sobre SMA200", "bool"),
@@ -81,7 +91,7 @@ class FilterDefinition(BaseModel):
     conditions: list[Condition] = Field(default_factory=list)
     sort_by: str = "composite_score"
     sort_dir: Literal["asc", "desc"] = "desc"
-    limit: int = Field(default=100, ge=1, le=500)
+    limit: int = Field(default=100, ge=1, le=1000)
 
     @field_validator("sort_by")
     @classmethod

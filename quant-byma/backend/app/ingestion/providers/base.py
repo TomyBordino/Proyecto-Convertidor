@@ -11,7 +11,11 @@ OHLCV_COLUMNS = ["open", "high", "low", "close", "volume"]
 
 
 class ProviderError(RuntimeError):
-    pass
+    """La fuente respondió pero no tiene el dato (símbolo inexistente, sin historia…)."""
+
+
+class SourceUnavailableError(ProviderError):
+    """La fuente no responde (red, proxy, 5xx persistentes): cuenta para el circuit breaker."""
 
 
 class MarketDataProvider(Protocol):

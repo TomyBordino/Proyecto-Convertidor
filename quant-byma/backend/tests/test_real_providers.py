@@ -357,12 +357,23 @@ def test_backfill_extends_short_primary_history():
 
 
 def test_circuit_breaker_skips_failing_source():
-    dead = FakeSource("stooq", ProviderError("connection reset"))
+    from app.ingestion.providers.base import SourceUnavailableError
+
+    dead = FakeSource("stooq", SourceUnavailableError("connection reset"))
     good = FakeSource("yahoo", bars(30))
     p = RealDataProvider([], [dead, good], [])
     for _ in range(5):
         p.history("AAPL", START, END)
     assert dead.calls == 3
+
+
+def test_missing_symbols_do_not_trip_circuit_breaker():
+    missing = FakeSource("data912", ProviderError("no tengo ese ticker"))
+    good = FakeSource("yahoo", bars(30))
+    p = RealDataProvider([missing, good], [], [])
+    for _ in range(5):
+        p.history("NEW.BA", START, END)
+    assert missing.calls == 5
 
 
 def test_splice_rescales_unadjusted_backfill():
@@ -433,3 +444,26 @@ def test_missing_shares_filled_from_next_source():
     yahoo = FakeSource("yahoo", [dc_replace(stmt(2025, currency="USD"), shares_outstanding=1950.0)])
     p = RealDataProvider([], [], [sec, yahoo])
     assert p.fundamentals("V", today=date(2026, 3, 1))[-1].shares_outstanding == 1950.0
+
+
+def test_incremental_window_accepts_few_bars():
+    p = RealDataProvider([FakeSource("bymadata", bars(8))], [], [])
+    df = p.history("GGAL.BA", date(2025, 1, 1), date(2025, 1, 15))
+    assert len(df) == 8
+
+
+def test_live_panel_drops_dollar_variants():
+    from app.ingestion.discovery import parse_live_panel
+
+    rows = [
+        {"symbol": "AAPL", "c": 100.0, "v": 10.0},
+        {"symbol": "AAPLD", "c": 0.07, "v": 5.0},
+        {"symbol": "AAPLC", "c": 0.07, "v": 5.0},
+        {"symbol": "TXAR", "c": 700.0, "v": 3.0},  # local sin variante en dólares
+        {"symbol": "AMD", "c": 50.0, "v": 1.0},  # termina en D pero "AM" no cotiza
+        {"symbol": "TGSU2", "c": 9000.0, "v": 1.0},
+        {"symbol": "TGSUD", "c": 5.5, "v": 1.0},
+        {"symbol": "BMA", "c": 9000.0, "v": 1.0},
+        {"symbol": "BMA.D", "c": 5.5, "v": 1.0},
+    ]
+    assert [q.ticker for q in parse_live_panel(rows)] == ["AAPL", "TXAR", "AMD", "TGSU2", "BMA"]

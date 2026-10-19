@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/", label: "Ranking" },
   { href: "/screener", label: "Screener" },
   { href: "/ccl", label: "CCL" },
+  { href: "/modelo", label: "Modelo" },
 ];
 
 export function MainNav() {

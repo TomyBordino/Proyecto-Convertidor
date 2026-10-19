@@ -113,3 +113,32 @@ def test_screener_and_saved_filters(seeded_client):
 def test_screener_fields(seeded_client):
     fields = seeded_client.get("/api/screener/fields").json()
     assert {"key": "composite_score", "label": "Score de revalorización", "type": "num"} in fields
+
+
+def test_model_report_and_diagnosis(seeded_client):
+    r = seeded_client.get("/api/model")
+    assert r.status_code == 200
+    report = r.json()
+    assert set(report["horizons"]) == {"20", "60", "120"}
+    assert "NaN" not in r.text
+    for stats in report["stage_stats"].values():
+        for s in stats:
+            assert 0 <= s["ci_low"] <= s["hit_rate"] <= s["ci_high"] <= 1
+
+    d = seeded_client.get("/api/instruments/AAPL").json()
+    diag = d["breakdown"]["diagnosis"]
+    assert diag["stage"] in (1, 2, 3, 4)
+    assert diag["summary"]
+    items = seeded_client.get("/api/rankings").json()["items"]
+    assert all("prob_up_60" in i and "stage" in i for i in items)
+
+
+def test_screener_by_stage_and_probability(seeded_client):
+    body = {
+        "conditions": [{"field": "stage", "op": "in", "value": [1, 2, 3, 4]}],
+        "sort_by": "prob_up_60",
+        "sort_dir": "desc",
+    }
+    r = seeded_client.post("/api/screener/run", json=body)
+    assert r.status_code == 200
+    assert r.json()["count"] > 0

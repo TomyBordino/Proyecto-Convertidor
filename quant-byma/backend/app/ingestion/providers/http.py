@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from app.ingestion.providers.base import ProviderError
+from app.ingestion.providers.base import ProviderError, SourceUnavailableError
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,9 @@ class HttpClient:
                 resp = self._client.request(method, url, **kwargs)
             except httpx.ProxyError as exc:
                 # El proxy de salida rechazó el host (política de red): reintentar no sirve.
-                raise ProviderError(f"{method} {url} bloqueado por el proxy de red: {exc}") from exc
+                raise SourceUnavailableError(
+                    f"{method} {url} bloqueado por el proxy de red: {exc}"
+                ) from exc
             except httpx.HTTPError as exc:  # timeouts, DNS, conexión cortada
                 last_exc = exc
             else:
@@ -72,7 +74,9 @@ class HttpClient:
                 last_exc = ProviderError(f"{method} {url} → HTTP {resp.status_code}")
             if attempt < self.retries:
                 time.sleep(min(2**attempt, 8))
-        raise ProviderError(f"{method} {url} falló tras {self.retries + 1} intentos: {last_exc}")
+        raise SourceUnavailableError(
+            f"{method} {url} falló tras {self.retries + 1} intentos: {last_exc}"
+        )
 
     def get_json(self, url: str, **kwargs: Any) -> Any:
         resp = self.request("GET", url, **kwargs)

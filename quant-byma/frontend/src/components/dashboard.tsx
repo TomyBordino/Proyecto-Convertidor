@@ -1,6 +1,7 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 
@@ -11,15 +12,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { api, fetcher, type RankingsResponse } from "@/lib/api";
-import { fmtMoney, fmtNumber } from "@/lib/format";
+import { fmtMoney } from "@/lib/format";
 
 export function Dashboard() {
-  const { data, error, isLoading, mutate } = useSWR<RankingsResponse>("/api/rankings?limit=500", fetcher);
+  const { data, error, isLoading, mutate } = useSWR<RankingsResponse>("/api/rankings?limit=1000", fetcher);
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("");
   const [sector, setSector] = useState("");
   const [minScore, setMinScore] = useState(0);
   const [onlySignals, setOnlySignals] = useState(false);
+  const [stage, setStage] = useState("");
+  const [biasFilter, setBiasFilter] = useState("");
+  const [minVolume, setMinVolume] = useState(1_000_000);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
@@ -36,9 +40,12 @@ export function Dashboard() {
         (!kind || i.kind === kind) &&
         (!sector || i.sector === sector) &&
         i.composite_score >= minScore &&
+        (!stage || String(i.stage) === stage) &&
+        (!biasFilter || (biasFilter === "sig" ? i.bias === "Favorable" && i.bias_significant : i.bias === biasFilter)) &&
+        (i.avg_volume_ars ?? 0) >= minVolume &&
         (!onlySignals || i.signals.length > 0),
     );
-  }, [data, query, kind, sector, minScore, onlySignals]);
+  }, [data, query, kind, sector, minScore, onlySignals, stage, biasFilter, minVolume]);
 
   async function refresh() {
     setRefreshing(true);
@@ -56,20 +63,24 @@ export function Dashboard() {
   if (error) return <ErrorState error={error} />;
   if (isLoading || !data) return <LoadingState />;
 
-  const top = data.items[0];
-  const cheapest = [...data.items]
-    .filter((i) => i.ccl_dev_pct !== null)
-    .sort((a, b) => (a.ccl_dev_pct ?? 0) - (b.ccl_dev_pct ?? 0))[0];
-  const bullish = data.items.filter((i) => i.technical_score !== null && i.technical_score >= 65).length;
+  const liquid = data.items.filter((i) => (i.avg_volume_ars ?? 0) >= minVolume);
+  const favorable = liquid.filter((i) => i.bias === "Favorable" && i.bias_significant).length;
+  const stage2 = liquid.filter((i) => i.stage === 2).length;
+  const base = data.items.find((i) => i.base_rate_60 !== null)?.base_rate_60 ?? null;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Ranking de revalorización</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Ranking de oportunidades</h1>
           <p className="text-sm text-muted-foreground">
-            Acciones BYMA y CEDEARs ordenados por Composite Score (técnico 40% · fundamental 35% ·
-            CCL 25%). Datos al {data.as_of ?? "—"}.
+            {data.count} acciones BYMA y CEDEARs ordenadas por probabilidad de cotizar más alto en 3 meses
+            (modelo calibrado fuera de muestra, ver{" "}
+            <Link className="underline" href="/modelo">
+              Modelo
+            </Link>
+            ). Datos al{" "}
+            {data.as_of ?? "—"}.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={refresh} disabled={refreshing}>
@@ -86,13 +97,17 @@ export function Dashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi title="CCL de mercado" value={fmtMoney(data.ccl_market, "ARS")} hint="Mediana ponderada por volumen" />
-        <Kpi title="Mejor score" value={top ? `${top.ticker} · ${fmtNumber(top.composite_score, 0)}` : "—"} hint={top?.name} />
         <Kpi
-          title="CCL implícito más barato"
-          value={cheapest ? `${cheapest.ticker} · ${fmtNumber(cheapest.ccl_dev_pct, 2)}%` : "—"}
-          hint="Desvío vs CCL de mercado"
+          title="Tasa base a 3 meses"
+          value={base === null ? "—" : `${(base * 100).toFixed(0)}%`}
+          hint="Frecuencia histórica de suba en 60 ruedas del universo"
         />
-        <Kpi title="Con sesgo técnico alcista" value={`${bullish} / ${data.count}`} hint="Score técnico ≥ 65" />
+        <Kpi
+          title="Sesgo favorable significativo"
+          value={`${favorable} / ${liquid.length}`}
+          hint="Probabilidad sobre la tasa base con IC95 que la excluye"
+        />
+        <Kpi title="En tendencia alcista (etapa 2)" value={`${stage2} / ${liquid.length}`} hint="Con el filtro de volumen actual" />
       </div>
 
       <Card>
@@ -113,6 +128,26 @@ export function Dashboard() {
             {sectors.map((s) => (
               <option key={s}>{s}</option>
             ))}
+          </Select>
+          <Select value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Etapa">
+            <option value="">Todas las etapas</option>
+            <option value="1">1 · Base</option>
+            <option value="2">2 · Alcista</option>
+            <option value="3">3 · Techo</option>
+            <option value="4">4 · Bajista</option>
+          </Select>
+          <Select value={biasFilter} onChange={(e) => setBiasFilter(e.target.value)} aria-label="Sesgo">
+            <option value="">Todo sesgo</option>
+            <option value="sig">Favorable significativo</option>
+            <option value="Favorable">Favorable</option>
+            <option value="Neutral">Neutral</option>
+            <option value="Desfavorable">Desfavorable</option>
+          </Select>
+          <Select value={String(minVolume)} onChange={(e) => setMinVolume(Number(e.target.value))} aria-label="Liquidez">
+            <option value="0">Cualquier volumen</option>
+            <option value="1000000">Volumen ≥ $1 M/día</option>
+            <option value="10000000">Volumen ≥ $10 M/día</option>
+            <option value="100000000">Volumen ≥ $100 M/día</option>
           </Select>
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             Score mín.

@@ -32,3 +32,18 @@ export function scoreTone(score: number | null | undefined): string {
   if (score >= 45) return "text-warning";
   return "text-negative";
 }
+
+export function fmtProb(v: number | null | undefined, digits = 0): string {
+  return v === null || v === undefined || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(digits)}%`;
+}
+
+export function fmtReturn(v: number | null | undefined, digits = 1): string {
+  return v === null || v === undefined || !Number.isFinite(v) ? "—" : fmtPct(v * 100, digits);
+}
+
+export const STAGE_SHORT: Record<number, string> = {
+  1: "Base",
+  2: "Alcista",
+  3: "Techo",
+  4: "Bajista",
+};

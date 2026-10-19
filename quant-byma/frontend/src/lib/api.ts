@@ -21,7 +21,119 @@ export interface RankingItem {
   change_1d_pct?: number | null;
   change_1m_pct?: number | null;
   roe?: number | null;
+  stage: number | null;
+  stage_name: string | null;
+  substate: string | null;
+  bias: Bias | null;
+  bias_significant: boolean | null;
+  prob_up_20: number | null;
+  prob_up_60: number | null;
+  prob_up_120: number | null;
+  base_rate_60: number | null;
+  valuation_state: string | null;
+  avg_volume_ars: number | null;
   [key: string]: unknown;
+}
+
+export type Bias = "Favorable" | "Neutral" | "Desfavorable" | "Sin datos";
+
+export interface Driver {
+  feature: string;
+  label: string;
+  value: number | null;
+  impact: number;
+}
+
+export interface Prediction {
+  horizon: number;
+  probability: number;
+  raw_score: number;
+  base_rate: number | null;
+  similar: {
+    hit_rate: number | null;
+    ci_low: number;
+    ci_high: number;
+    n: number;
+    n_effective: number;
+    median_return: number | null;
+    p25_return: number | null;
+    p75_return: number | null;
+  };
+  drivers_up: Driver[];
+  drivers_down: Driver[];
+}
+
+export interface StageStat {
+  stage: number;
+  hit_rate: number;
+  ci_low: number;
+  ci_high: number;
+  n: number;
+  n_effective: number;
+  median_return: number;
+  p25_return: number;
+  p75_return: number;
+}
+
+export interface FundamentalState {
+  compared_to: "sector" | "universo";
+  valuation_pct: number | null;
+  valuation: string | null;
+  quality_pct: number | null;
+  quality: string | null;
+  growth_pct: number | null;
+  growth: string | null;
+  leverage_pct: number | null;
+  leverage: string | null;
+  fcf_pct: number | null;
+}
+
+export interface Diagnosis {
+  as_of: string;
+  stage: number | null;
+  stage_name: string | null;
+  stage_description: string | null;
+  substate: string | null;
+  substate_description: string | null;
+  stage_since: string | null;
+  days_in_stage: number | null;
+  stage_evidence: Record<string, StageStat>;
+  fundamentals: FundamentalState | null;
+  predictions: Record<string, Prediction>;
+  bias: Bias;
+  bias_significant: boolean;
+  summary: string;
+}
+
+export interface HorizonReport {
+  horizon: number;
+  status: string;
+  n_samples: number;
+  oos_samples?: number;
+  oos_effective?: number;
+  oos_years?: number[];
+  base_rate?: number;
+  auc?: number;
+  brier?: number;
+  brier_base?: number;
+  brier_skill?: number;
+  top_quintile_hit?: number;
+  bottom_quintile_hit?: number;
+  top_quintile_median_return?: number;
+  bottom_quintile_median_return?: number;
+  calibration?: { pred: number; observed: number; n: number }[];
+  coefficients?: Record<string, number>;
+}
+
+export interface ModelReport {
+  as_of: string;
+  n_assets: number;
+  first_date: string;
+  last_date: string;
+  horizons: Record<string, HorizonReport>;
+  stage_stats: Record<string, StageStat[]>;
+  features: Record<string, string>;
+  stages: Record<string, { name: string; description: string }>;
 }
 
 export interface RankingsResponse {
@@ -61,6 +173,7 @@ export interface AssetDetail {
     weights: Record<string, number>;
     groups: ScoreGroup[];
     ccl_market: number;
+    diagnosis?: Diagnosis | null;
   };
 }
 

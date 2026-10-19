@@ -27,6 +27,17 @@ class RankingItem(BaseModel):
     fundamental_score: float | None = None
     ccl_score: float | None = None
     signals: list[str] = []
+    stage: int | None = None
+    stage_name: str | None = None
+    substate: str | None = None
+    bias: str | None = None
+    bias_significant: bool | None = None
+    prob_up_20: float | None = None
+    prob_up_60: float | None = None
+    prob_up_120: float | None = None
+    base_rate_60: float | None = None
+    valuation_state: str | None = None
+    avg_volume_ars: float | None = None
 
 
 class RankingsResponse(BaseModel):

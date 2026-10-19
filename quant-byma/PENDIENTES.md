@@ -10,9 +10,9 @@ Estado al 2026-10-18, después de validar la ingesta con datos reales (ver READM
 - [ ] **API key de Tiingo** (`QB_TIINGO_API_KEY`, plan gratuito): Stooq rechaza conexiones desde
       el entorno cloud, así que hoy los precios de EE. UU. vienen de Yahoo (último respaldo).
 - [ ] **API key de FMP** (`QB_FMP_API_KEY`, opcional): respaldo de balances antes de Yahoo.
-- [ ] **Confirmar ratios de CEDEAR** contra el listado oficial de BYMA
-      (`backend/app/ingestion/universe.py`). Ya verificados con precios reales: SPY 60:1,
-      YPFD 10:1, DISN. El sistema marca como "Ratio sospechoso" todo desvío de CCL > 35%.
+- [ ] **Ratios de CEDEAR**: los ~300 ratios del universo descubierto se estiman con precios reales
+      (37/37 coincidencias contra los curados). Conviene contrastarlos con el listado oficial de
+      BYMA/Comafi cuando haya una fuente accesible; los de confianza baja quedan inactivos.
 
 ## Datos
 
@@ -29,6 +29,14 @@ Estado al 2026-10-18, después de validar la ingesta con datos reales (ver READM
       calcula con el ratio actual. La mediana de mercado es robusta (filtro MAD), pero el
       gráfico por activo puede mostrar saltos antes de un cambio de ratio si la fuente no
       publica la serie ajustada.
+
+## Modelo
+
+- [ ] Evaluar features adicionales: revisiones de estimaciones de analistas, sorpresas de
+      resultados, flujo de CEDEARs (volumen anómalo en BYMA), tasa real y riesgo país.
+- [ ] Probar modelos no lineales (gradient boosting) contra la logística con la misma validación
+      walk-forward; adoptarlos solo si mejoran AUC y calibración fuera de muestra.
+- [ ] Objetivo relativo (superar al universo/al SPY) además de "subir en USD".
 
 ## Infraestructura
 

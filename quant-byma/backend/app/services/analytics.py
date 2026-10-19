@@ -11,11 +11,13 @@ from __future__ import annotations
 import math
 from datetime import date
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.analytics import fundamental as fa
+from app.analytics.model import AssetInput
 from app.analytics.patterns import detect_breakout, last_ma_cross, rsi_divergence
 from app.analytics.scoring import (
     ScoringWeights,
@@ -27,11 +29,12 @@ from app.analytics.scoring import (
     technical_subscore,
 )
 from app.analytics.technical import compute_all
-from app.db.models import Instrument, ScoreSnapshot
+from app.db.models import Instrument, ModelRun, ScoreSnapshot
 from app.ingestion.ccl import ccl_deviation, implied_ccl, is_ratio_suspect
 from app.ingestion.normalization import ccl_close_and_avg, statement_to_usd
 from app.ingestion.universe import UNIVERSE_BY_TICKER
 from app.services.data import load_bars, load_fx, load_statements, to_usd_ccl
+from app.services.diagnosis import diagnose
 
 
 def _f(x: object) -> float | None:
@@ -162,9 +165,12 @@ def compute_snapshots(
     asof = min(pd.Timestamp(day), ccl.index.max()) if day else ccl.index.max()
     ccl = ccl[ccl.index <= asof]
     ccl_market = float(ccl.iloc[-1])
-    instruments = session.scalars(select(Instrument).order_by(Instrument.ticker)).all()
+    instruments = session.scalars(
+        select(Instrument).where(Instrument.active.isnot(False)).order_by(Instrument.ticker)
+    ).all()
 
     staged: list[dict] = []
+    model_inputs: list[AssetInput] = []
     for inst in instruments:
         ba = load_bars(session, inst.id, "BA")
         ba = ba[ba.index <= asof]
@@ -197,6 +203,15 @@ def compute_snapshots(
             if statements
             else {}
         )
+        model_inputs.append(
+            AssetInput(
+                ticker=inst.ticker,
+                close=series["close"],
+                volume=series.get("volume"),
+                statements=statements,
+                price_per_share=px_share,
+            )
+        )
         staged.append(
             dict(
                 inst=inst,
@@ -211,6 +226,13 @@ def compute_snapshots(
                 hist_median=median_of(hist_rows[:-1]),
             )
         )
+
+    diagnosis, model_report = diagnose(
+        model_inputs, {r["inst"].ticker: r["inst"].sector for r in staged}
+    )
+    model_report["as_of"] = asof.date().isoformat()
+    session.execute(delete(ModelRun).where(ModelRun.as_of == asof.date()))
+    session.add(ModelRun(as_of=asof.date(), report=_json_safe(model_report)))
 
     session.execute(delete(ScoreSnapshot).where(ScoreSnapshot.day == asof.date()))
     for row in staged:
@@ -265,6 +287,9 @@ def compute_snapshots(
             "fundamental_score": res.subscores.get("fundamental"),
             "ccl_score": res.subscores.get("ccl"),
             "signals": signals,
+            **diagnosis_columns(diagnosis.get(inst.ticker)),
+            "avg_volume_ars": inst.avg_volume_ars,
+            "ratio_source": inst.ratio_source,
         }
         metrics = {k: round(v, 4) if isinstance(v, float) else v for k, v in metrics.items()}
         session.add(
@@ -282,11 +307,46 @@ def compute_snapshots(
                     "ccl_market": ccl_market,
                     "sector_median": sector_median,
                     "history_median": row["hist_median"],
+                    "diagnosis": _json_safe(diagnosis.get(inst.ticker)),
                 },
             )
         )
     session.flush()
     return len(staged)
+
+
+def diagnosis_columns(d: dict | None) -> dict:
+    """Campos planos del diagnóstico para la tabla y el screener."""
+    if not d:
+        return {"stage": None, "stage_name": None, "substate": None, "bias": None}
+    preds = d.get("predictions", {})
+    fund = d.get("fundamentals") or {}
+    return {
+        "stage": d.get("stage"),
+        "stage_name": d.get("stage_name"),
+        "substate": d.get("substate"),
+        "bias": d.get("bias"),
+        "bias_significant": d.get("bias_significant"),
+        "valuation_state": fund.get("valuation"),
+        **{f"prob_up_{h}": (preds.get(h) or {}).get("probability") for h in ("20", "60", "120")},
+        "base_rate_60": (preds.get("60") or {}).get("base_rate"),
+    }
+
+
+def _json_safe(obj: object) -> object:
+    """Convierte NaN/inf y tipos numpy en valores JSON válidos."""
+    if isinstance(obj, dict):
+        return {str(k): _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list | tuple):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, bool | str) or obj is None:
+        return obj
+    if isinstance(obj, int | np.integer):
+        return int(obj)
+    if isinstance(obj, float | np.floating):
+        v = float(obj)
+        return v if math.isfinite(v) else None
+    return str(obj)
 
 
 def _signals(row: dict) -> list[str]:

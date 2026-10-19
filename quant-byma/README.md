@@ -29,6 +29,43 @@ normalización por CCL y un motor de scoring cuantitativo.
    SMA, Bollinger, RSI y MACD; CCL implícito vs mercado; fundamentales; desglose del score), screener con
    filtros guardables y página de CCL.
 
+## Universo
+
+La ingesta descubre todas las especies con operaciones en BYMA desde el panel en vivo de data912
+(~400 CEDEARs y ~70 acciones locales) además de los 42 activos "ancla" de `universe.py`.
+
+- **Ratios de CEDEAR**: ninguna API pública accesible los publica, así que se deducen de precios
+  reales: `ratio = CCL × precio_US / precio_BYMA` (mediana de 20 ruedas, redondeada al entero). Se
+  acepta solo si la serie es estable (dispersión < 3%) y cae cerca de un entero; la confianza queda
+  guardada en cada activo. Validado contra los 37 ratios curados: 37/37 coincidencias.
+- **Cambios de ratio históricos** (p. ej. los cambios masivos de BYMA del 18/11/2022 y 25/01/2024)
+  se detectan automáticamente y se usan para calcular CCL implícitos históricos correctos.
+- **Subyacente**: mismo ticker en EE. UU. salvo los overrides de `discovery.py`; un mapeo incorrecto
+  produce un ratio inestable y el activo queda inactivo con el motivo.
+- La ingesta es incremental: si un activo ya tiene historia, solo baja las ruedas nuevas.
+
+## Diagnóstico y probabilidades
+
+Cada activo recibe:
+
+1. **Momento técnico**: etapa de Weinstein (1 base · 2 tendencia alcista · 3 techo · 4 tendencia
+   bajista, con la media de 30 semanas y su pendiente) y un submomento (pullback, sobreextendida,
+   en máximos, rebote, sobrevendida…).
+2. **Momento fundamental**: percentiles de valuación (P/E, P/S, P/B), calidad (ROE), crecimiento y
+   endeudamiento contra su sector (o el universo si el sector tiene menos de 5 empresas).
+3. **Probabilidad de cotizar más alto** en 20, 60 y 120 ruedas, de una regresión logística:
+   - features sin mirar el futuro (los balances cuentan 100 días después del cierre);
+   - validación walk-forward por año con embargo; todas las métricas son fuera de muestra;
+   - calibración isotónica sobre esas predicciones;
+   - evidencia por predicción: frecuencia de acierto de situaciones históricas con puntaje similar,
+     intervalo de Wilson con n efectivo (ventanas superpuestas) y rango de retornos;
+   - factores que explican cada probabilidad (coeficiente × valor estandarizado).
+4. **Sesgo**: Favorable / Neutral / Desfavorable vs la tasa base, marcado como significativo cuando
+   el intervalo de confianza de las situaciones similares excluye a la tasa base.
+
+La página **Modelo** del dashboard muestra AUC, Brier skill score, calibración por decil, quintiles y
+desempeño histórico por etapa.
+
 ## Fuentes de datos reales
 
 El proveedor por defecto (`QB_DATA_PROVIDER=real`) combina fuentes con cadena de respaldo y
@@ -37,7 +74,7 @@ El proveedor por defecto (`QB_DATA_PROVIDER=real`) combina fuentes con cadena de
 | Dato | Fuente principal | Respaldo | Notas |
 | --- | --- | --- | --- |
 | Precios BYMA (ARS) | **BYMA Data** (`open.bymadata.com.ar`, oficial) | data912.com → Yahoo `.BA` | Plazo `24HS` configurable |
-| Precios EE. UU. (USD) | **Tiingo** (con `QB_TIINGO_API_KEY`) | Stooq → Yahoo | Precios sin ajustar por dividendos |
+| Precios EE. UU. (USD) | **Tiingo** (con `QB_TIINGO_API_KEY`) | Yahoo (descarga en lote) → Stooq | Precios sin ajustar por dividendos |
 | Balances | **SEC EDGAR** XBRL (10-K y 20-F, oficial) | FMP (con `QB_FMP_API_KEY`) → Yahoo | Requiere `QB_SEC_USER_AGENT` |
 | CCL de referencia | argentinadatos.com | — | Valida el CCL calculado |
 
