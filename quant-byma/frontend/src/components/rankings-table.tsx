@@ -150,7 +150,7 @@ export function RankingsTable({ items }: { items: RankingItem[] }) {
             <TableCell>
               <StageBadge stage={r.stage} substate={r.substate} />
             </TableCell>
-            <TableCell className="text-right font-medium">{r.score_pct === null ? "—" : r.score_pct.toFixed(0)}</TableCell>
+            <TableCell className="text-right font-medium">{r.score_pct == null ? "—" : r.score_pct.toFixed(0)}</TableCell>
             <TableCell>
               <ProbBar p={r.prob_up_20} />
             </TableCell>

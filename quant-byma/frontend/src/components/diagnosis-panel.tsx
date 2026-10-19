@@ -35,7 +35,7 @@ export function DiagnosisPanel({ d }: { d: Diagnosis }) {
       {primary && (
         <Card>
           <CardHeader>
-            <CardTitle>Qué explica el puntaje{d.score_pct !== null && ` · percentil ${d.score_pct.toFixed(0)} del universo`}</CardTitle>
+            <CardTitle>Qué explica el puntaje{d.score_pct != null && ` · percentil ${d.score_pct.toFixed(0)} del universo`}</CardTitle>
             <CardDescription>
               Percentil del activo en cada factor frente al resto del universo en la misma fecha. El puntaje combina
               tendencia (50%) y valuación (50%); el aporte es peso × (percentil − 50).
@@ -183,7 +183,7 @@ function PredictionCard({ h, p, primary }: { h: string; p: Prediction; primary: 
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-1.5 text-xs text-muted-foreground">
-        {p.decile !== null && (
+        {p.decile != null && (
           <p>
             Puntaje en el <b className="text-foreground">decil {p.decile} de 10</b>: históricamente ese decil subió el{" "}
             {fmtProb(p.decile_hit_rate)} de las veces (retorno mediano {fmtReturn(p.decile_median_return)}).
