@@ -165,11 +165,16 @@ def diagnose(assets: list[AssetInput], sectors: dict[str, str]) -> tuple[dict[st
 
     latest = panel.sort_values("date").groupby("ticker").tail(1)
     preds: dict[int, list] = {}
+    rel_preds: dict[int, list] = {}
+    report["relative"] = {}
     for h in HORIZONS:
         hm = train_horizon(panel, h)
         report["horizons"][str(h)] = hm.report
         report["stage_stats"][str(h)] = stage_statistics(panel, h)
         preds[h] = predict(hm, latest)
+        rel = train_horizon(panel, h, target_kind="rel")
+        report["relative"][str(h)] = rel.report
+        rel_preds[h] = predict(rel, latest)
         log.info(
             "Modelo %d ruedas: %s",
             h,
@@ -181,6 +186,13 @@ def diagnose(assets: list[AssetInput], sectors: dict[str, str]) -> tuple[dict[st
         )
 
     fund = fundamental_state(latest, sectors)
+    # Percentil del puntaje dentro del universo actual (0–100): ordena aunque la
+    # probabilidad calibrada empate en un mismo escalón.
+    score_pct = {
+        str(t): round(float(v) * 100, 1)
+        for t, v in latest.set_index("ticker")["score"].rank(pct=True).items()
+        if np.isfinite(v)
+    }
     closes = {a.ticker: a.close for a in assets}
     out: dict[str, dict] = {}
     for i, (_, row) in enumerate(latest.iterrows()):
@@ -203,6 +215,9 @@ def diagnose(assets: list[AssetInput], sectors: dict[str, str]) -> tuple[dict[st
             "stage_evidence": stage_ev,
             "fundamentals": fund.get(t),
             "predictions": {str(h): preds[h][i] for h in HORIZONS if preds[h][i]},
+            "relative": {str(h): rel_preds[h][i] for h in HORIZONS if rel_preds[h][i]},
+            "score": _r(row.get("score")),
+            "score_pct": score_pct.get(t),
         }
         b, significant = bias(d["predictions"].get(str(PRIMARY_HORIZON)))
         d["bias"], d["bias_significant"] = b, significant

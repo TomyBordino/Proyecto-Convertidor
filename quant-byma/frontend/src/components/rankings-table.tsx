@@ -27,6 +27,7 @@ type SortKey =
   | "ccl_dev_pct"
   | "pe"
   | "avg_volume_ars"
+  | "score_pct"
   | "composite_score";
 
 interface Column {
@@ -42,6 +43,7 @@ const COLUMNS: Column[] = [
   { key: "price_ars", label: "Precio ARS", align: "right" },
   { key: "change_1m_pct", label: "1M (USD)", align: "right" },
   { key: "stage", label: "Etapa", title: "Etapa de Weinstein y submomento" },
+  { key: "score_pct", label: "Puntaje", align: "right", title: "Percentil del puntaje del modelo en el universo (0–100): ordena dentro de una misma probabilidad" },
   { key: "prob_up_20", label: "P(suba) 1M", title: "Probabilidad calibrada de cotizar más alto en 20 ruedas" },
   { key: "prob_up_60", label: "P(suba) 3M", title: "Probabilidad calibrada de cotizar más alto en 60 ruedas (la línea marca la tasa base)" },
   { key: "prob_up_120", label: "P(suba) 6M", title: "Probabilidad calibrada de cotizar más alto en 120 ruedas" },
@@ -71,7 +73,9 @@ export function RankingsTable({ items }: { items: RankingItem[] }) {
       // los nulos quedan siempre al final, sin importar la dirección
       if (av === null || av === undefined) return 1;
       if (bv === null || bv === undefined) return -1;
-      const c = compare(av, bv);
+      let c = compare(av, bv);
+      // Las probabilidades calibradas se agrupan en escalones: el puntaje desempata.
+      if (c === 0 && sort.key.startsWith("prob_")) c = compare(a.score_pct, b.score_pct);
       return sort.dir === "asc" ? c : -c;
     });
     return out;
@@ -143,6 +147,7 @@ export function RankingsTable({ items }: { items: RankingItem[] }) {
             <TableCell>
               <StageBadge stage={r.stage} substate={r.substate} />
             </TableCell>
+            <TableCell className="text-right font-medium">{r.score_pct === null ? "—" : r.score_pct.toFixed(0)}</TableCell>
             <TableCell>
               <ProbBar p={r.prob_up_20} />
             </TableCell>

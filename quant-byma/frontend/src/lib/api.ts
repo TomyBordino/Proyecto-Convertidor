@@ -32,6 +32,10 @@ export interface RankingItem {
   base_rate_60: number | null;
   valuation_state: string | null;
   avg_volume_ars: number | null;
+  score_pct: number | null;
+  prob_outperform_20: number | null;
+  prob_outperform_60: number | null;
+  prob_outperform_120: number | null;
   [key: string]: unknown;
 }
 
@@ -104,6 +108,9 @@ export interface Diagnosis {
   stage_evidence: Record<string, StageStat>;
   fundamentals: FundamentalState | null;
   predictions: Record<string, Prediction>;
+  relative: Record<string, Prediction>;
+  score: number | null;
+  score_pct: number | null;
   bias: Bias;
   bias_significant: boolean;
   summary: string;
@@ -139,6 +146,7 @@ export interface ModelReport {
   first_date: string;
   last_date: string;
   horizons: Record<string, HorizonReport>;
+  relative: Record<string, HorizonReport>;
   stage_stats: Record<string, StageStat[]>;
   features: Record<string, string>;
   stages: Record<string, { name: string; description: string }>;

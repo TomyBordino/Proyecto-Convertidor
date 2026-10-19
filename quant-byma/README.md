@@ -83,6 +83,14 @@ Métricas fuera de muestra (walk-forward por año, con embargo):
 | 60 ruedas | 57,6% | 0,526 | +0,0027 | 15/21 | 49% vs ~60% |
 | 120 ruedas | 60,0% | 0,539 | +0,0050 | 16/21 | 49% vs ~62–64% |
 
+**Superar al universo** (rendir más que la mediana en el mismo período): con la misma validación
+dio AUC 0,510 / 0,514 / 0,524 y Brier skill ≤ 0,0003, por debajo del mínimo de 0,0005 exigido, así
+que se informa la tasa base (50%) con la leyenda "sin ventaja demostrada". El efecto existe en el
+decil más débil (42–46% de las veces supera a la mediana) pero no alcanza para una probabilidad útil.
+
+La tabla muestra además el **percentil del puntaje** (0–100), que desempata activos con la misma
+probabilidad calibrada (la calibración agrupa en escalones donde la historia no distingue).
+
 Antes de llegar a este modelo se probaron, con la misma validación, una regresión logística y
 gradient boosting con 26 variables (AUC 0,51 y Brier skill negativo con 6 años de datos; con 22
 años, el objetivo absoluto dio AUC < 0,5). La ventaja es moderada y está sobre todo en evitar los

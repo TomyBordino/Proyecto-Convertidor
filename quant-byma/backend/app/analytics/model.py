@@ -17,7 +17,11 @@ Probabilidad: calibración isotónica del puntaje contra la frecuencia observada
 Validación walk-forward: cada año se califica con una calibración ajustada solo con años
 anteriores (con embargo de H ruedas), y todas las métricas reportadas son de esas
 predicciones fuera de muestra. Si un horizonte no supera a la tasa base (Brier skill ≤ 0
-o AUC < MIN_AUC) se marca "sin ventaja demostrada" y se informa la tasa base.
+≤ MIN_BRIER_SKILL o AUC < MIN_AUC) se marca "sin ventaja demostrada" y se informa la
+tasa base.
+
+Objetivos: "abs" = cotizar más alto en USD; "rel" = superar a la mediana del universo en el
+mismo período (independiente de si el mercado en general sube o baja).
 
 Las features usan solo información disponible a cada fecha: cada balance se considera
 conocido FILING_LAG_DAYS días después del cierre del ejercicio.
@@ -42,6 +46,10 @@ FILING_LAG_DAYS = 100
 MIN_TRAIN_SAMPLES = 2000
 MIN_TRAIN_YEARS = 2
 MIN_AUC = 0.51
+# Mejora mínima del error de Brier vs la tasa base para considerar que hay ventaja: por
+# debajo, la diferencia es indistinguible de ruido y se informa la tasa base.
+MIN_BRIER_SKILL = 0.0005
+CALIBRATION_BINS = 50
 
 TREND_FACTORS = ("slope_200", "mom_12_1", "dist_sma200", "dd_252")
 VALUE_FACTORS = ("r_earnings_yield", "r_book_yield", "r_fcf_yield", "r_sales_yield")
@@ -296,11 +304,24 @@ def _isotonic() -> IsotonicRegression:
     return IsotonicRegression(out_of_bounds="clip", y_min=0.02, y_max=0.98, increasing=True)
 
 
-def train_horizon(panel: pd.DataFrame, horizon: int) -> HorizonModel:
+def _fit_calibrator(score: pd.Series, y: pd.Series) -> IsotonicRegression:
+    """Isotónica sobre el puntaje agrupado en tramos de igual cantidad de casos: evita que
+    unos pocos casos extremos fijen probabilidades absurdas (p. ej. 2%) en los bordes."""
+    df = pd.DataFrame({"s": score.to_numpy(), "y": y.to_numpy()})
+    bins = pd.qcut(df["s"].rank(method="first"), min(CALIBRATION_BINS, len(df)), labels=False)
+    agg = df.groupby(bins).agg(s=("s", "mean"), y=("y", "mean"), n=("y", "size"))
+    return _isotonic().fit(agg["s"], agg["y"], sample_weight=agg["n"])
+
+
+def train_horizon(panel: pd.DataFrame, horizon: int, target_kind: str = "abs") -> HorizonModel:
     target = f"fwd_{horizon}"
     data = panel.dropna(subset=["score", "stage", target]).copy()
-    data["y"] = (data[target] > 0).astype(int)
+    if target_kind == "rel":
+        data["y"] = (data[target] > data.groupby("date")[target].transform("median")).astype(int)
+    else:
+        data["y"] = (data[target] > 0).astype(int)
     report: dict = {
+        "target": target_kind,
         "horizon": horizon,
         "n_samples": int(len(data)),
         "method": "factores con pesos fijos + calibración isotónica walk-forward",
@@ -323,7 +344,7 @@ def train_horizon(panel: pd.DataFrame, horizon: int) -> HorizonModel:
         train = data[data["date"] < pd.Timestamp(year=y, month=1, day=1) - embargo]
         if len(train) < MIN_TRAIN_SAMPLES or train["y"].nunique() < 2 or test.empty:
             continue
-        iso = _isotonic().fit(train["score"], train["y"])
+        iso = _fit_calibrator(train["score"], train["y"])
         part = test[["date", "ticker", "stage", "score", "y", target]].copy()
         part["prob"] = iso.predict(test["score"])
         part["train_base"] = train["y"].mean()
@@ -347,7 +368,7 @@ def train_horizon(panel: pd.DataFrame, horizon: int) -> HorizonModel:
     brier_base = brier_score_loss(y_oos, oos["train_base"])
     auc = float(roc_auc_score(y_oos, oos["score"]))
     skill = float(1 - brier / brier_base)
-    has_skill = skill > 0 and auc >= MIN_AUC
+    has_skill = skill > MIN_BRIER_SKILL and auc >= MIN_AUC
     q = pd.qcut(oos["score"].rank(method="first"), 5, labels=False)
     top, bottom = oos[q == 4], oos[q == 0]
     report.update(
@@ -375,7 +396,7 @@ def train_horizon(panel: pd.DataFrame, horizon: int) -> HorizonModel:
         }
     )
     # Calibración final con toda la historia etiquetada.
-    calibrator = _isotonic().fit(data["score"], data["y"])
+    calibrator = _fit_calibrator(data["score"], data["y"])
     return HorizonModel(horizon, report, calibrator, oos, has_skill)
 
 

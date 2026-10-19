@@ -30,10 +30,12 @@ export function DiagnosisPanel({ d }: { d: Diagnosis }) {
         )}
       </div>
 
+      <RelativeCard d={d} />
+
       {primary && (
         <Card>
           <CardHeader>
-            <CardTitle>Qué explica el puntaje</CardTitle>
+            <CardTitle>Qué explica el puntaje{d.score_pct !== null && ` · percentil ${d.score_pct.toFixed(0)} del universo`}</CardTitle>
             <CardDescription>
               Percentil del activo en cada factor frente al resto del universo en la misma fecha. El puntaje combina
               tendencia (50%) y valuación (50%); el aporte es peso × (percentil − 50).
@@ -53,6 +55,36 @@ export function DiagnosisPanel({ d }: { d: Diagnosis }) {
         .
       </p>
     </section>
+  );
+}
+
+function RelativeCard({ d }: { d: Diagnosis }) {
+  const hs = (["20", "60", "120"] as const).filter((h) => d.relative?.[h]);
+  if (!hs.length) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Probabilidad de superar al promedio del universo</CardTitle>
+        <CardDescription>
+          Frecuencia con que un activo con este puntaje rindió más que la mediana de todo el universo en el mismo
+          período, sin importar si el mercado subió o bajó.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-3">
+        {hs.map((h) => {
+          const p = d.relative[h];
+          return (
+            <div key={h}>
+              <p className="text-xs text-muted-foreground">{HORIZON_LABEL[h]}</p>
+              <p className="tabular text-2xl font-semibold">{fmtProb(p.probability)}</p>
+              <p className="text-xs text-muted-foreground">
+                {p.has_skill ? `base ${fmtProb(p.base_rate)}` : "tasa base · sin ventaja demostrada fuera de muestra"}
+              </p>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 

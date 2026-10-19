@@ -17,9 +17,10 @@ const axis = { fontSize: 11, fill: "var(--muted-foreground)" };
 export function ModelView() {
   const { data, error } = useSWR<ModelReport>("/api/model", fetcher);
   const [h, setH] = useState("60");
+  const [target, setTarget] = useState<"abs" | "rel">("abs");
   if (error) return <ErrorState error={error} />;
   if (!data) return <LoadingState />;
-  const r = data.horizons[h];
+  const r = (target === "abs" ? data.horizons : (data.relative ?? {}))[h];
   const calib = (r?.calibration ?? []).map((c) => ({ decile: c.decile, observed: c.observed * 100, n: c.n }));
 
   return (
@@ -35,7 +36,14 @@ export function ModelView() {
         </p>
       </div>
 
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1">
+        <Button size="sm" variant={target === "abs" ? "secondary" : "ghost"} onClick={() => setTarget("abs")}>
+          Subir en USD
+        </Button>
+        <Button size="sm" variant={target === "rel" ? "secondary" : "ghost"} onClick={() => setTarget("rel")}>
+          Superar al universo
+        </Button>
+        <span className="mx-2 w-px bg-border" />
         {Object.keys(data.horizons).map((k) => (
           <Button key={k} size="sm" variant={h === k ? "secondary" : "ghost"} onClick={() => setH(k)}>
             {H_LABEL[k] ?? `${k} ruedas`}
@@ -52,13 +60,17 @@ export function ModelView() {
           <p className={r.has_skill ? "text-sm text-positive" : "text-sm text-warning"}>
             {r.has_skill
               ? `Ventaja demostrada a ${H_LABEL[h]}: supera a la tasa base fuera de muestra (AUC > 0,5 en ${r.years_auc_above_half} de ${r.by_year?.length} años).`
-              : `Sin ventaja demostrada a ${H_LABEL[h]}: en este horizonte se informa la tasa base en lugar de una probabilidad del modelo.`}
+              : `Sin ventaja demostrada a ${H_LABEL[h]}: la mejora sobre la tasa base (Brier skill ${fmtNumber(r.brier_skill, 4)}) no alcanza el mínimo de 0,0005, así que se informa la tasa base.`}
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Metric
               title="Tasa base"
               value={fmtProb(r.base_rate)}
-              hint="Frecuencia con que un activo cualquiera estuvo más alto al final del horizonte"
+              hint={
+                target === "abs"
+                  ? "Frecuencia con que un activo cualquiera estuvo más alto al final del horizonte"
+                  : "Frecuencia con que un activo cualquiera superó a la mediana del universo (≈50% por construcción)"
+              }
             />
             <Metric
               title="AUC fuera de muestra"
@@ -82,7 +94,8 @@ export function ModelView() {
               <CardHeader>
                 <CardTitle>Acierto por decil de puntaje</CardTitle>
                 <CardDescription>
-                  Frecuencia de suba observada fuera de muestra en cada décimo del puntaje (1 = peor, 10 = mejor), sobre{" "}
+                  {target === "abs" ? "Frecuencia de suba" : "Frecuencia de superar a la mediana del universo"} observada
+                  fuera de muestra en cada décimo del puntaje (1 = peor, 10 = mejor), sobre{" "}
                   {r.oos_samples?.toLocaleString("es-AR")} predicciones ({r.oos_years?.[0]}–{r.oos_years?.at(-1)}). La línea
                   es la tasa base.
                 </CardDescription>

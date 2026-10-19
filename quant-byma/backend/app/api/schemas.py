@@ -38,6 +38,10 @@ class RankingItem(BaseModel):
     base_rate_60: float | None = None
     valuation_state: str | None = None
     avg_volume_ars: float | None = None
+    score_pct: float | None = None
+    prob_outperform_20: float | None = None
+    prob_outperform_60: float | None = None
+    prob_outperform_120: float | None = None
 
 
 class RankingsResponse(BaseModel):

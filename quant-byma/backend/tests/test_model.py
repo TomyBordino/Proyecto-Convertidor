@@ -133,3 +133,13 @@ def test_no_skill_falls_back_to_base_rate():
         assert {p["probability"] for p in preds} == {hm.report["base_rate"]}
     else:  # una ventaja espuria debería ser mínima
         assert hm.report["brier_skill"] < 0.01
+
+
+def test_relative_target_and_stable_calibration():
+    panel = build_panel(_synthetic_assets())
+    rel = train_horizon(panel, 20, target_kind="rel")
+    assert rel.report["target"] == "rel"
+    # La tasa base de "superar a la mediana" ronda el 50% por construcción.
+    assert 0.45 < rel.report["base_rate"] < 0.55
+    probs = [p["probability"] for p in predict(rel, panel.sort_values("date").tail(50))]
+    assert all(0.05 < p < 0.95 for p in probs)  # sin extremos absurdos por pocos casos

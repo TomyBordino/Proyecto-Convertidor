@@ -332,6 +332,7 @@ def diagnosis_columns(d: dict | None) -> dict:
     if not d:
         return {"stage": None, "stage_name": None, "substate": None, "bias": None}
     preds = d.get("predictions", {})
+    rel = d.get("relative", {})
     fund = d.get("fundamentals") or {}
     return {
         "stage": d.get("stage"),
@@ -342,6 +343,11 @@ def diagnosis_columns(d: dict | None) -> dict:
         "valuation_state": fund.get("valuation"),
         **{f"prob_up_{h}": (preds.get(h) or {}).get("probability") for h in ("20", "60", "120")},
         "base_rate_60": (preds.get("60") or {}).get("base_rate"),
+        "score_pct": d.get("score_pct"),
+        **{
+            f"prob_outperform_{h}": (rel.get(h) or {}).get("probability")
+            for h in ("20", "60", "120")
+        },
     }
 
 
