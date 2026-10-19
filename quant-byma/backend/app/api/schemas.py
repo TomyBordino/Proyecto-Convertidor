@@ -42,6 +42,10 @@ class RankingItem(BaseModel):
     prob_outperform_20: float | None = None
     prob_outperform_60: float | None = None
     prob_outperform_120: float | None = None
+    news_score: float | None = None
+    news_label: str | None = None
+    events_favorable: int = 0
+    events_unfavorable: int = 0
 
 
 class RankingsResponse(BaseModel):

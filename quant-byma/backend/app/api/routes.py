@@ -43,6 +43,7 @@ from app.services.data import (
     split_adjust_statements,
     to_usd_ccl,
 )
+from app.services.events import latest_event_report, news_pressure
 from app.services.ingestion import IngestionError, implied_with_ratio_history, run_ingestion
 
 router = APIRouter(prefix="/api")
@@ -73,7 +74,34 @@ def _snapshot_rows(session: Session) -> tuple[date | None, list[dict]]:
     if day is None:
         return None, []
     snaps = session.scalars(select(ScoreSnapshot).where(ScoreSnapshot.day == day)).all()
-    return day, [s.metrics for s in snaps]
+    rows = [s.metrics for s in snaps]
+    ctx = _context_fields(session, rows)
+    return day, [{**r, **ctx.get(r.get("ticker", ""), {})} for r in rows]
+
+
+def _context_fields(session: Session, rows: list[dict]) -> dict[str, dict]:
+    """Campos de la capa de eventos (no alteran el puntaje ni las probabilidades)."""
+    pressure, _ = news_pressure(session, get_settings().news_lookback_days)
+    report = latest_event_report(session) or {}
+    tone: dict[str, dict[str, int]] = {}
+    for ev in report.get("events", []):
+        if ev["state"] == "inactivo":
+            continue
+        for row in (report.get("study", {}).get(ev["key"]) or {}).get("sectors", []):
+            if row["significant"]:
+                t = tone.setdefault(row["sector"], {"fav": 0, "unfav": 0})
+                t["fav" if row["mean_excess"] > 0 else "unfav"] += 1
+    out = {}
+    for r in rows:
+        p = pressure.get(r.get("ticker", ""))
+        t = tone.get(r.get("sector", ""), {})
+        out[r.get("ticker", "")] = {
+            "news_score": p["score"] if p else None,
+            "news_label": p["label"] if p else None,
+            "events_favorable": t.get("fav", 0),
+            "events_unfavorable": t.get("unfav", 0),
+        }
+    return out
 
 
 def _ranked(rows: list[dict]) -> list[RankingItem]:

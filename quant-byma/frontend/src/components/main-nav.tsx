@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/screener", label: "Screener" },
   { href: "/ccl", label: "CCL" },
   { href: "/modelo", label: "Modelo" },
+  { href: "/eventos", label: "Eventos" },
 ];
 
 export function MainNav() {

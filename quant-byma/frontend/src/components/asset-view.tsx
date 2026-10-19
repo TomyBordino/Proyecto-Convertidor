@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
 
+import { AssetEventsPanel } from "@/components/asset-events";
 import { DiagnosisPanel } from "@/components/diagnosis-panel";
 import { FlowsChart, MultiplesChart } from "@/components/fundamentals-chart";
 import { LineChart, PriceChart, type Overlays } from "@/components/price-chart";
@@ -78,6 +79,8 @@ export function AssetView({ ticker }: { ticker: string }) {
       </div>
 
       {d.breakdown.diagnosis && <DiagnosisPanel d={d.breakdown.diagnosis} />}
+
+      <AssetEventsPanel ticker={d.ticker} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Stat label="Precio BYMA" value={fmtMoney(m.price_ars, "ARS")} />

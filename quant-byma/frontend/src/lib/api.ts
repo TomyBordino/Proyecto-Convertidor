@@ -36,6 +36,10 @@ export interface RankingItem {
   prob_outperform_20: number | null;
   prob_outperform_60: number | null;
   prob_outperform_120: number | null;
+  news_score: number | null;
+  news_label: NewsLabel | null;
+  events_favorable: number;
+  events_unfavorable: number;
   [key: string]: unknown;
 }
 
@@ -255,6 +259,147 @@ export interface CCLResponse {
   assets: { ticker: string; kind: Kind; implied_ccl: number; deviation_pct: number; ratio_suspect: boolean }[];
 }
 
+export type NewsLabel = "Viento a favor" | "Viento en contra" | "Neutral";
+
+export interface MacroEvent {
+  key: string;
+  name: string;
+  category: string;
+  description: string;
+  state: "activo" | "reciente" | "inactivo";
+  since: string | null;
+  as_of: string;
+  value: number;
+  value_label: string;
+  threshold_label: string;
+  occurrences: number;
+  factor: string | null;
+}
+
+export interface SectorEventRow {
+  sector: string;
+  n: number;
+  mean_excess: number;
+  median_excess: number;
+  hit_rate: number;
+  ci_low: number;
+  ci_high: number;
+  significant: boolean;
+}
+
+export interface EventStudy {
+  n: number;
+  dates: string[];
+  universe: {
+    mean_return: number;
+    hit_rate: number;
+    ci_low: number;
+    ci_high: number;
+    base_rate: number | null;
+  } | null;
+  sectors: SectorEventRow[];
+}
+
+export interface MacroSeries {
+  key: string;
+  label: string;
+  unit: "pct" | "pts" | "usd";
+  as_of: string;
+  value: number;
+  change_20: number | null;
+  change_60: number | null;
+  spark: Point[];
+}
+
+export interface NewsImpact {
+  target_type: "sector" | "ticker";
+  target: string;
+  direction: "positivo" | "negativo" | "mixto";
+  magnitude: "baja" | "media" | "alta";
+  confidence: "baja" | "media" | "alta";
+  horizon: "dias" | "semanas" | "meses";
+}
+
+export interface NewsRow {
+  id: number;
+  title: string;
+  publisher: string;
+  link: string;
+  published_at: string;
+  related: string[];
+  analysis: {
+    relevant: boolean;
+    event_type: string;
+    scope: "macro" | "sector" | "empresa";
+    summary: string;
+    rationale: string;
+    impacts: NewsImpact[];
+    model: string;
+  } | null;
+}
+
+export interface Pressure {
+  score: number;
+  pos: number;
+  neg: number;
+  label: NewsLabel;
+  sector_score?: number;
+}
+
+export interface EventsStatus {
+  news_enabled: boolean;
+  classifier: boolean;
+  model: string | null;
+  lookback_days: number;
+}
+
+export interface EventsOverview {
+  status: EventsStatus;
+  as_of: string | null;
+  horizon: number | null;
+  events: MacroEvent[];
+  study: Record<string, EventStudy>;
+  sector_sensitivities: Record<string, Record<string, { impact: number; n: number }>>;
+  factors: Record<string, { label: string }>;
+  macro: MacroSeries[];
+  event_labels: Record<string, string>;
+  sector_pressure: Record<string, Pressure>;
+  ticker_pressure: Record<string, Pressure>;
+  news: NewsRow[];
+}
+
+export interface Sensitivity {
+  beta: number;
+  impact: number;
+  t: number | null;
+  corr: number;
+  n_weeks: number;
+}
+
+export interface Exposure {
+  event: string;
+  name: string;
+  state: MacroEvent["state"];
+  sector_history: SectorEventRow | null;
+  reaction: { factor: string; shock: string | null; impact: number; t: number | null; significant: boolean } | null;
+  tone: "favorable" | "desfavorable" | null;
+}
+
+export interface AssetEvents {
+  status: EventsStatus;
+  ticker: string;
+  sector: string;
+  as_of: string | null;
+  exposure: Exposure[];
+  sensitivities: Record<string, Sensitivity>;
+  sector_sensitivities: Record<string, { impact: number; n: number }>;
+  factors: Record<string, { label: string }>;
+  pressure: Pressure | null;
+  sector_pressure: Pressure | null;
+  event_labels: Record<string, string>;
+  news: NewsRow[];
+}
+
 export type Op = "gt" | "gte" | "lt" | "lte" | "eq" | "neq" | "between" | "in";
 
 export interface Condition {
@@ -319,4 +464,5 @@ export const api = {
     request<SavedFilter>("/api/filters", { method: "POST", body: JSON.stringify({ name, definition }) }),
   deleteFilter: (id: number) => request<void>(`/api/filters/${id}`, { method: "DELETE" }),
   ingest: () => request<Record<string, unknown>>("/api/ingest", { method: "POST" }),
+  refreshEvents: () => request<Record<string, unknown>>("/api/events/refresh", { method: "POST" }),
 };

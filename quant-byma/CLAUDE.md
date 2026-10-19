@@ -16,6 +16,10 @@ aislada del sitio estático (ConvertiYa) que ocupa la raíz del repositorio.
     `model.py` (panel point-in-time, puntaje de factores tendencia+valuación con pesos fijos,
     calibración isotónica walk-forward, compuerta de habilidad, evidencia).
   - `app/services/diagnosis.py` — etapa + momento fundamental + probabilidades por activo.
+  - `app/analytics/events.py` + `app/services/events.py` — capa de eventos: reglas macro sobre series
+    de mercado, estudio de eventos por sector, sensibilidades, noticias y presión por activo/sector.
+  - `app/services/news_ai.py` — clasificación de titulares con Claude (SDK `anthropic`, salida con
+    JSON Schema, `fallbacks="default"`); los tests usan un cliente falso, nunca la API.
   - `app/services/` — pipeline de ingesta y cálculo de snapshots; `app/api/` — rutas `/api/*`.
   - `app/db/timescale.sql` — hypertables, compresión y agregado continuo para producción.
 - `frontend/` — Next.js 16 (App Router, `cacheComponents`), Tailwind v4, componentes estilo shadcn/ui
@@ -28,6 +32,7 @@ Backend (desde `quant-byma/backend`):
 python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
 python -m app.scheduler --check                  # diagnóstico de cada fuente real
 python -m app.scheduler --once                   # ingesta real (--provider real | yahoo | demo)
+python -m app.scheduler --events                 # solo eventos macro y noticias
 uvicorn app.main:app --reload --port 8000        # dev API
 python -m pytest                                 # tests
 ruff check . && ruff format --check . && mypy app   # lint + tipos
@@ -57,6 +62,8 @@ correr una ingesta y `psql "$URL" -f backend/app/db/timescale.sql`.
   inexistente levanta `ProviderError` (no cuenta).
 - Toda función de ratio devuelve `None` si el dato falta o no tiene sentido económico; el scoring re-escala
   los componentes disponibles, nunca penaliza por falta de datos.
+- La capa de eventos es contexto: no tocar las probabilidades con ella salvo que mejore AUC y Brier
+  skill fuera de muestra (la prueba con factores macro empeoró el Brier; ver README).
 - Respuestas JSON sin NaN/Infinity (`_f()` en `services/analytics.py`).
 - Next 16: accesos a `params`/`usePathname` van dentro de `<Suspense>`; leer `node_modules/next/dist/docs/` ante dudas.
 - lightweight-charts solo acepta colores hex/rgb (no los tokens oklch) y se le fija `locale: "es-AR"`.

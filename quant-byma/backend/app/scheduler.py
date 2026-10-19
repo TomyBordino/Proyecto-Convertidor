@@ -60,7 +60,21 @@ def ingest_job(provider_kind: str | None = None) -> dict:
             us_history_start=settings.model_history_start,
         )
     log.info("Ingesta %s: %s", provider.name, {k: v for k, v in result.items() if k != "errors"})
+    if provider.name != "demo":
+        result["events"] = events_job()
     return result
+
+
+def events_job() -> dict:
+    """Series macro, reporte de eventos y noticias (no detiene la ingesta si falla)."""
+    from app.services.events import refresh_events
+
+    with session_factory()() as session:
+        res = refresh_events(session, get_settings())
+    log.info("Eventos: %s", {k: v for k, v in res.items() if k != "errors"})
+    for e in res["errors"]:
+        log.warning("Eventos: %s", e)
+    return res
 
 
 def _scheduled_ingest() -> None:
@@ -92,21 +106,32 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="Ejecutar una ingesta y salir")
     parser.add_argument("--provider", choices=["real", "yahoo", "demo"], default=None)
     parser.add_argument("--check", action="store_true", help="Diagnosticar las fuentes reales")
+    parser.add_argument(
+        "--events", action="store_true", help="Actualizar solo eventos macro y noticias"
+    )
     args = parser.parse_args()
     if args.check:
         for name, status, detail in check_sources():
             print(f"{status:6} {name:15} {detail}")
         return
     init_engine()
+    if args.events:
+        res = events_job()
+        print({k: v for k, v in res.items() if k != "errors"})
+        for e in res["errors"]:
+            print("  -", e)
+        return
     if args.once:
         try:
             res = ingest_job(args.provider)
         except IngestionError as exc:
             log.error("%s", exc)
             raise SystemExit(1) from exc
-        print({k: v for k, v in res.items() if k != "errors"})
+        print({k: v for k, v in res.items() if k not in ("errors", "events")})
         for e in res["errors"]:
             print("  -", e)
+        if "events" in res:
+            print("eventos:", {k: v for k, v in res["events"].items() if k != "errors"})
         return
     import time
 

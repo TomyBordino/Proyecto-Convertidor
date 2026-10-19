@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { ScoreBar } from "@/components/score-bar";
 import { SignalBadges } from "@/components/signal-badges";
+import { PressureBadge } from "@/components/events-shared";
 import { BiasBadge, StageBadge } from "@/components/stage-badge";
 import { ProbBar } from "@/components/prob-bar";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,7 @@ type SortKey =
   | "pe"
   | "avg_volume_ars"
   | "score_pct"
+  | "news_score"
   | "composite_score";
 
 interface Column {
@@ -47,6 +49,7 @@ const COLUMNS: Column[] = [
   { key: "prob_up_20", label: "P(suba) 1M", title: "Probabilidad calibrada de cotizar más alto en 20 ruedas" },
   { key: "prob_up_60", label: "P(suba) 3M", title: "Probabilidad calibrada de cotizar más alto en 60 ruedas (la línea marca la tasa base)" },
   { key: "prob_up_120", label: "P(suba) 6M", title: "Probabilidad calibrada de cotizar más alto en 120 ruedas" },
+  { key: "news_score", label: "Contexto", title: "Noticias interpretadas por Claude y eventos macro vigentes con historia significativa para el sector (no alteran las probabilidades)" },
   { key: "pe", label: "P/E", align: "right" },
   { key: "ccl_dev_pct", label: "Desvío CCL", align: "right", title: "CCL implícito vs mercado" },
   { key: "avg_volume_ars", label: "Volumen", align: "right", title: "Promedio diario en BYMA (ARS)" },
@@ -160,6 +163,9 @@ export function RankingsTable({ items }: { items: RankingItem[] }) {
             <TableCell>
               <ProbBar p={r.prob_up_120} />
             </TableCell>
+            <TableCell>
+              <ContextCell r={r} />
+            </TableCell>
             <TableCell className="text-right">{fmtNumber(r.pe, 1)}</TableCell>
             <TableCell
               className={cn(
@@ -188,5 +194,22 @@ export function RankingsTable({ items }: { items: RankingItem[] }) {
         )}
       </TableBody>
     </Table>
+  );
+}
+
+function ContextCell({ r }: { r: RankingItem }) {
+  const fav = r.events_favorable ?? 0;
+  const unfav = r.events_unfavorable ?? 0;
+  if (!r.news_label && !fav && !unfav) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {r.news_label && r.news_label !== "Neutral" && <PressureBadge label={r.news_label} score={r.news_score} />}
+      {(fav > 0 || unfav > 0) && (
+        <span className="text-[11px] text-muted-foreground" title="Eventos macro vigentes tras los que el sector históricamente le ganó (▲) o perdió (▼) contra el universo">
+          Macro: {fav > 0 && <span className="text-positive">▲{fav}</span>} {unfav > 0 && <span className="text-negative">▼{unfav}</span>}
+        </span>
+      )}
+      {r.news_label === "Neutral" && !fav && !unfav && <span className="text-[11px] text-muted-foreground">Noticias neutras</span>}
+    </div>
   );
 }

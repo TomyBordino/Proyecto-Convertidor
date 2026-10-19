@@ -179,3 +179,63 @@ class SplitEvent(Base):
     instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), index=True)
     day: Mapped[date] = mapped_column(Date)
     ratio: Mapped[float] = mapped_column(Float)
+
+
+class MacroPoint(Base):
+    """Series de mercado que reflejan eventos macro (tasas, petróleo, VIX, dólar, granos)."""
+
+    __tablename__ = "macro_points"
+    __table_args__ = (UniqueConstraint("key", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(16), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    value: Mapped[float] = mapped_column(Float)
+
+
+class EventReport(Base):
+    """Eventos macro activos, estudio de eventos y sensibilidades (capa de contexto)."""
+
+    __tablename__ = "event_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    as_of: Mapped[date] = mapped_column(Date)
+    report: Mapped[dict] = mapped_column(JSON)
+
+
+class NewsItem(Base):
+    """Titular de una fuente de noticias (sin análisis)."""
+
+    __tablename__ = "news_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(512))
+    publisher: Mapped[str] = mapped_column(String(128), default="")
+    link: Mapped[str] = mapped_column(String(1024), default="")
+    published_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    source: Mapped[str] = mapped_column(String(24))
+    query: Mapped[str] = mapped_column(String(64), default="")
+    related: Mapped[list] = mapped_column(JSON, default=list)
+
+    analysis: Mapped[NewsAnalysis | None] = relationship(back_populates="item", uselist=False)
+
+
+class NewsAnalysis(Base):
+    """Interpretación de un titular por Claude: tipo de evento e impacto por sector/activo."""
+
+    __tablename__ = "news_analysis"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    news_id: Mapped[int] = mapped_column(ForeignKey("news_items.id"), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    model: Mapped[str] = mapped_column(String(64))
+    relevant: Mapped[bool] = mapped_column(Boolean, default=False)
+    event_type: Mapped[str] = mapped_column(String(24), default="otro")
+    scope: Mapped[str] = mapped_column(String(12), default="empresa")
+    summary: Mapped[str] = mapped_column(String(512), default="")
+    rationale: Mapped[str] = mapped_column(String(1024), default="")
+    impacts: Mapped[list] = mapped_column(JSON, default=list)
+
+    item: Mapped[NewsItem] = relationship(back_populates="analysis")

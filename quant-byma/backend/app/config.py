@@ -2,6 +2,7 @@ from datetime import date
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +31,17 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = False
     refresh_hour: int = 18
     refresh_minute: int = 15
+
+    # Capa de eventos: titulares interpretados con Claude. Sin clave, las noticias se
+    # muestran sin clasificar y los eventos macro (series de mercado) siguen funcionando.
+    anthropic_api_key: str = Field(
+        default="", validation_alias=AliasChoices("ANTHROPIC_API_KEY", "QB_ANTHROPIC_API_KEY")
+    )
+    news_model: str = "claude-opus-5-5"
+    news_enabled: bool = True
+    # Activos (por volumen operado) cuyos titulares se buscan en cada corrida.
+    news_max_tickers: int = 120
+    news_lookback_days: int = 14
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

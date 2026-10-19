@@ -9,6 +9,9 @@ Estado al 2026-10-18, después de validar la ingesta con datos reales (ver READM
       un contacto real.
 - [ ] **API key de Tiingo** (`QB_TIINGO_API_KEY`, plan gratuito): Stooq rechaza conexiones desde
       el entorno cloud, así que hoy los precios de EE. UU. vienen de Yahoo (último respaldo).
+- [ ] **API key de Anthropic** (`ANTHROPIC_API_KEY` en `backend/.env`): habilita la interpretación de
+      titulares con Claude. Costo estimado: ~US$1–2 la primera corrida (≈800 titulares) y menos
+      después, porque solo se clasifican los titulares nuevos.
 - [ ] **API key de FMP** (`QB_FMP_API_KEY`, opcional): respaldo de balances antes de Yahoo.
 - [ ] **Ratios de CEDEAR**: los ~300 ratios del universo descubierto se estiman con precios reales
       (37/37 coincidencias contra los curados). Conviene contrastarlos con el listado oficial de
@@ -29,6 +32,14 @@ Estado al 2026-10-18, después de validar la ingesta con datos reales (ver READM
       calcula con el ratio actual. La mediana de mercado es robusta (filtro MAD), pero el
       gráfico por activo puede mostrar saltos antes de un cambio de ratio si la fuente no
       publica la serie ajustada.
+
+## Eventos
+
+- [ ] Más fuentes de noticias: Google News, GDELT, FRED (tasas/inflación oficiales) y BCRA están
+      bloqueadas por la política de red del entorno; habilitarlas daría cobertura en español y
+      series oficiales. Evaluar también los 8-K de la SEC (hechos relevantes por empresa).
+- [ ] Validar fuera de muestra la presión de noticias como factor cuando haya meses de historial
+      clasificado (hoy solo se acumula desde la primera corrida).
 
 ## Modelo
 

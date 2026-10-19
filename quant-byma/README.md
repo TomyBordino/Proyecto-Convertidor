@@ -97,6 +97,31 @@ años, el objetivo absoluto dio AUC < 0,5). La ventaja es moderada y está sobre
 activos peor puntuados. Los múltiplos históricos usan acciones ajustadas por splits: sin ese ajuste
 las empresas que luego hicieron splits parecían baratas en el pasado (información del futuro).
 
+## Eventos y noticias (capa de contexto)
+
+Página **Eventos**, tarjeta "Eventos y noticias" en cada activo y columna *Contexto* en el ranking.
+Nada de esta capa modifica el puntaje ni las probabilidades.
+
+- **Eventos macro medidos** (`app/analytics/events.py`): 14 reglas sobre series reales de Yahoo
+  (Tesoro 10 años y 3 meses, VIX, WTI/Brent, oro, DXY, soja/maíz/trigo, gas, cobre), por ejemplo
+  "Tesoro 10 años +40 pb en 20 ruedas" o "Brent +15% en 20 ruedas". Para cada regla vigente se muestra
+  el **estudio de eventos**: retorno de cada sector contra el universo en las 60 ruedas siguientes a
+  cada ocurrencia desde 2004 (episodios separados por 60 ruedas), con % de veces que le ganó, IC95 y n.
+  También se muestra la **sensibilidad** de cada activo y sector a cada factor (beta semanal de 3 años).
+- **Noticias** (`app/services/news_ai.py`): titulares de Yahoo Finance por activo (los 120 de más
+  volumen) y por tema (tasas, guerra/sanciones, petróleo/OPEP, clima, aranceles, China, Argentina,
+  regulación). Claude clasifica cada titular con salida estructurada (JSON Schema): relevancia, tipo
+  de evento, y sectores/activos afectados con dirección, magnitud, confianza y horizonte. Los destinos
+  fuera del universo se descartan. La presión por activo es la suma de dirección × magnitud × confianza
+  con vida media de 5 días; las noticias del sector pesan la mitad.
+- Requiere `ANTHROPIC_API_KEY` en `backend/.env` (modelo `claude-opus-5-5`, `QB_NEWS_MODEL`). Sin clave,
+  los titulares se muestran sin clasificar. Si Claude declina un lote, se reintenta automáticamente en
+  el modelo de respaldo de Anthropic (`fallbacks="default"`).
+- **¿Por qué no entra al modelo?** Se probó agregar VIX, Δ tasa 10 años, Brent, DXY, pendiente de la
+  curva y las 14 reglas a la probabilidad calibrada, con la misma validación walk-forward. El AUC subió
+  (0,511 → 0,526 a 20 ruedas) pero el Brier skill pasó a ser negativo en los tres horizontes (−0,026 /
+  −0,032 / −0,109): los regímenes macro no se repiten lo suficiente como para calibrar con ellos.
+
 ## Fuentes de datos reales
 
 El proveedor por defecto (`QB_DATA_PROVIDER=real`) combina fuentes con cadena de respaldo y
