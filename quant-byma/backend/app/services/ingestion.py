@@ -365,7 +365,10 @@ def run_ingestion(
 
     # -------------------------------------------------------- CCL final
     ccl = build_market_ccl(pairs)
-    session.execute(delete(FxRate).where(FxRate.kind == "CCL", FxRate.day >= start))
+    # Se reemplaza el rango que cubre la serie nueva (puede empezar antes de `start` si hay
+    # precios de BYMA guardados de corridas anteriores).
+    ccl_from = min(start, ccl.index.min().date()) if not ccl.empty else start
+    session.execute(delete(FxRate).where(FxRate.kind == "CCL", FxRate.day >= ccl_from))
     session.add_all(
         FxRate(kind="CCL", day=ts.date(), value=float(r.value), n_samples=int(r.n_samples))
         for ts, r in ccl.iterrows()
@@ -373,7 +376,8 @@ def run_ingestion(
     reference = getattr(provider, "reference_ccl", None)
     ref = reference(start, end) if reference else pd.Series(dtype=float)
     if not ref.empty:
-        session.execute(delete(FxRate).where(FxRate.kind == "CCL_REF", FxRate.day >= start))
+        ref_from = min(start, ref.index.min().date())
+        session.execute(delete(FxRate).where(FxRate.kind == "CCL_REF", FxRate.day >= ref_from))
         session.add_all(
             FxRate(kind="CCL_REF", day=ts.date(), value=float(v), n_samples=1)
             for ts, v in ref.items()
