@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -12,8 +12,22 @@ _SessionLocal: sessionmaker[Session] | None = None
 
 
 def make_engine(url: str) -> Engine:
-    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, connect_args=connect_args, future=True)
+    if not url.startswith("sqlite"):
+        return create_engine(url, future=True)
+    engine = create_engine(
+        url, connect_args={"check_same_thread": False, "timeout": 30}, future=True
+    )
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_conn, _record):  # type: ignore[no-untyped-def]
+        # WAL: la API puede leer mientras una ingesta escribe (sin "database is locked").
+        cur = dbapi_conn.cursor()
+        if ":memory:" not in url:
+            cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=30000")
+        cur.close()
+
+    return engine
 
 
 def init_engine(url: str | None = None) -> Engine:
