@@ -274,6 +274,24 @@ def _calibration_table(p: np.ndarray, y: np.ndarray, bins: int = 10) -> list[dic
     return out
 
 
+def _decile_table(oos: pd.DataFrame) -> list[dict]:
+    q = pd.qcut(oos["score"].rank(method="first"), 10, labels=False)
+    out = []
+    for d, g in oos.groupby(q):
+        out.append(
+            {
+                "decile": int(d) + 1,
+                "pred": round(float(g["prob"].mean()), 4),
+                "observed": round(float(g["y"].mean()), 4),
+                "median_return": round(float(g["fwd"].median()), 4),
+                "score_min": round(float(g["score"].min()), 4),
+                "score_max": round(float(g["score"].max()), 4),
+                "n": int(len(g)),
+            }
+        )
+    return out
+
+
 def _isotonic() -> IsotonicRegression:
     return IsotonicRegression(out_of_bounds="clip", y_min=0.02, y_max=0.98, increasing=True)
 
@@ -350,7 +368,10 @@ def train_horizon(panel: pd.DataFrame, horizon: int) -> HorizonModel:
             "bottom_quintile_hit": round(float(bottom["y"].mean()), 4),
             "top_quintile_median_return": round(float(top["fwd"].median()), 4),
             "bottom_quintile_median_return": round(float(bottom["fwd"].median()), 4),
-            "calibration": _calibration_table(oos["prob"].to_numpy(), y_oos),
+            # Por decil de puntaje (no de probabilidad): las probabilidades fuera de muestra
+            # mezclan calibraciones de distintos años y sus extremos reflejan el nivel del
+            # mercado de cada época (p. ej. 2006–2008), no la capacidad del puntaje.
+            "calibration": _decile_table(oos),
         }
     )
     # Calibración final con toda la historia etiquetada.
@@ -431,11 +452,18 @@ def predict(hm: HorizonModel, rows: pd.DataFrame) -> list[dict | None]:
         n_eff = n * STEP / hm.horizon
         lo, hi = wilson_interval(hit, n_eff) if n else (0.0, 1.0)
         drivers = _drivers(row)
+        deciles = hm.report.get("calibration") or []
+        decile = next(
+            (d for d in deciles if score <= d["score_max"]), deciles[-1] if deciles else None
+        )
         out.append(
             {
                 "horizon": hm.horizon,
                 "probability": round(prob, 4),
                 "score": round(float(score), 4),
+                "decile": decile["decile"] if decile else None,
+                "decile_hit_rate": decile["observed"] if decile else None,
+                "decile_median_return": decile["median_return"] if decile else None,
                 "has_skill": hm.has_skill,
                 "base_rate": base,
                 "similar": {

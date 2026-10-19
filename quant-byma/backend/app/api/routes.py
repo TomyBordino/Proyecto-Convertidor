@@ -34,7 +34,15 @@ from app.services.analytics import (
     ratio_history,
     usd_statements,
 )
-from app.services.data import instrument_by_ticker, load_bars, load_fx, load_statements, to_usd_ccl
+from app.services.data import (
+    instrument_by_ticker,
+    load_bars,
+    load_fx,
+    load_splits,
+    load_statements,
+    split_adjust_statements,
+    to_usd_ccl,
+)
 from app.services.ingestion import IngestionError, implied_with_ratio_history, run_ingestion
 
 router = APIRouter(prefix="/api")
@@ -257,7 +265,7 @@ def asset_prices(
 def asset_fundamentals(ticker: str, session: Session = SessionDep) -> dict:
     inst = _get_instrument(session, ticker)
     ccl = load_fx(session, "CCL")
-    raw = load_statements(session, inst.id)
+    raw = split_adjust_statements(load_statements(session, inst.id), load_splits(session, inst.id))
     statements = usd_statements(raw, ccl)
     series, series_kind = analysis_series(
         inst, load_bars(session, inst.id, "BA"), load_bars(session, inst.id, "US"), ccl

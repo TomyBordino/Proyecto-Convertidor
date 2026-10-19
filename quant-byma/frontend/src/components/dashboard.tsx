@@ -41,7 +41,7 @@ export function Dashboard() {
         (!sector || i.sector === sector) &&
         i.composite_score >= minScore &&
         (!stage || String(i.stage) === stage) &&
-        (!biasFilter || (biasFilter === "sig" ? i.bias === "Favorable" && i.bias_significant : i.bias === biasFilter)) &&
+        (!biasFilter || i.bias === biasFilter) &&
         (i.avg_volume_ars ?? 0) >= minVolume &&
         (!onlySignals || i.signals.length > 0),
     );
@@ -64,7 +64,8 @@ export function Dashboard() {
   if (isLoading || !data) return <LoadingState />;
 
   const liquid = data.items.filter((i) => (i.avg_volume_ars ?? 0) >= minVolume);
-  const favorable = liquid.filter((i) => i.bias === "Favorable" && i.bias_significant).length;
+  const favorable = liquid.filter((i) => i.bias === "Favorable").length;
+  const unfavorable = liquid.filter((i) => i.bias === "Desfavorable").length;
   const stage2 = liquid.filter((i) => i.stage === 2).length;
   const base = data.items.find((i) => i.base_rate_60 !== null)?.base_rate_60 ?? null;
 
@@ -103,9 +104,9 @@ export function Dashboard() {
           hint="Frecuencia histórica de suba en 60 ruedas del universo"
         />
         <Kpi
-          title="Sesgo favorable significativo"
-          value={`${favorable} / ${liquid.length}`}
-          hint="Probabilidad sobre la tasa base con IC95 que la excluye"
+          title="Sesgo significativo"
+          value={`${favorable} favorables · ${unfavorable} desfavorables`}
+          hint="Solo cuando el IC95 de situaciones similares excluye la tasa base"
         />
         <Kpi title="En tendencia alcista (etapa 2)" value={`${stage2} / ${liquid.length}`} hint="Con el filtro de volumen actual" />
       </div>
@@ -138,7 +139,6 @@ export function Dashboard() {
           </Select>
           <Select value={biasFilter} onChange={(e) => setBiasFilter(e.target.value)} aria-label="Sesgo">
             <option value="">Todo sesgo</option>
-            <option value="sig">Favorable significativo</option>
             <option value="Favorable">Favorable</option>
             <option value="Neutral">Neutral</option>
             <option value="Desfavorable">Desfavorable</option>

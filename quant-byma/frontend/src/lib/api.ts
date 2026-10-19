@@ -49,6 +49,9 @@ export interface Prediction {
   probability: number;
   score: number;
   has_skill: boolean;
+  decile: number | null;
+  decile_hit_rate: number | null;
+  decile_median_return: number | null;
   base_rate: number | null;
   similar: {
     hit_rate: number | null;
@@ -122,7 +125,7 @@ export interface HorizonReport {
   bottom_quintile_hit?: number;
   top_quintile_median_return?: number;
   bottom_quintile_median_return?: number;
-  calibration?: { pred: number; observed: number; n: number }[];
+  calibration?: { decile: number; pred: number; observed: number; median_return: number; n: number }[];
   has_skill?: boolean;
   method?: string;
   weights?: { trend: number; value: number; trend_factors: string[]; value_factors: string[] };

@@ -167,3 +167,15 @@ class ModelRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     as_of: Mapped[date] = mapped_column(Date)
     report: Mapped[dict] = mapped_column(JSON)
+
+
+class SplitEvent(Base):
+    """Split del activo en EE. UU. (ratio = acciones nuevas por acción vieja)."""
+
+    __tablename__ = "splits"
+    __table_args__ = (UniqueConstraint("instrument_id", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    ratio: Mapped[float] = mapped_column(Float)

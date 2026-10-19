@@ -52,11 +52,19 @@ SECTOR_ES = {
 }
 
 
-def batch_history(symbols: list[str], start: date, end: date, chunk: int = 80) -> dict:
-    """Descarga diaria en lote (una request por bloque de símbolos): {símbolo: OHLCV}."""
+def batch_history(
+    symbols: list[str], start: date, end: date, chunk: int = 80
+) -> tuple[dict[str, pd.DataFrame], dict[str, pd.Series]]:
+    """Descarga diaria en lote (una request por bloque de símbolos).
+
+    Devuelve ({símbolo: OHLCV}, {símbolo: splits}). Los precios vienen ajustados por splits
+    (no por dividendos); los splits sirven para llevar las acciones de cada balance a la
+    misma base que el precio.
+    """
     import yfinance as yf
 
     out: dict[str, pd.DataFrame] = {}
+    splits: dict[str, pd.Series] = {}
     for i in range(0, len(symbols), chunk):
         part = symbols[i : i + chunk]
         raw = yf.download(
@@ -64,6 +72,7 @@ def batch_history(symbols: list[str], start: date, end: date, chunk: int = 80) -
             start=start.isoformat(),
             end=(end + timedelta(days=1)).isoformat(),
             auto_adjust=False,
+            actions=True,
             progress=False,
             group_by="ticker",
             threads=True,
@@ -76,12 +85,18 @@ def batch_history(symbols: list[str], start: date, end: date, chunk: int = 80) -
             df = raw[sym].rename(columns=str.lower)
             if "close" not in df:
                 continue
+            if "stock splits" in df:
+                sp = df["stock splits"].dropna()
+                sp = sp[sp > 0]
+                if not sp.empty:
+                    sp.index = pd.DatetimeIndex(sp.index).tz_localize(None).normalize()
+                    splits[sym] = sp.astype(float)
             df = df[[c for c in OHLCV_COLUMNS if c in df]].dropna(subset=["close"])
             if df.empty:
                 continue
             df.index = pd.DatetimeIndex(df.index).tz_localize(None).normalize()
             out[sym] = df
-    return out
+    return out, splits
 
 
 def metadata(symbol: str) -> dict:

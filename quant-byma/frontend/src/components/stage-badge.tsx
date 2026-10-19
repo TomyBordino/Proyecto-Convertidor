@@ -35,12 +35,11 @@ export function BiasBadge({ bias, significant }: { bias: Bias | null; significan
       variant={BIAS_VARIANT[bias]}
       title={
         significant
-          ? "La frecuencia histórica de situaciones similares difiere de la tasa base (IC95)"
-          : "No se distingue estadísticamente de la tasa base"
+          ? "La frecuencia histórica de situaciones similares difiere de la tasa base (IC95 que la excluye)"
+          : "No se distingue estadísticamente de un activo cualquiera"
       }
     >
       {bias}
-      {significant ? " ✓" : ""}
     </Badge>
   );
 }

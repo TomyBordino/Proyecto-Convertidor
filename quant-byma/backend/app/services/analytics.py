@@ -33,7 +33,14 @@ from app.db.models import Instrument, ModelRun, ScoreSnapshot
 from app.ingestion.ccl import ccl_deviation, implied_ccl, is_ratio_suspect
 from app.ingestion.normalization import ccl_close_and_avg, statement_to_usd
 from app.ingestion.universe import UNIVERSE_BY_TICKER
-from app.services.data import load_bars, load_fx, load_statements, to_usd_ccl
+from app.services.data import (
+    load_bars,
+    load_fx,
+    load_splits,
+    load_statements,
+    split_adjust_statements,
+    to_usd_ccl,
+)
 from app.services.diagnosis import diagnose
 
 
@@ -191,7 +198,12 @@ def compute_snapshots(
         dev = ccl_deviation(imp, ccl_market) if imp else None
         suspect = bool(imp and is_ratio_suspect(imp, ccl_market))
 
-        statements = usd_statements(load_statements(session, inst.id), ccl)
+        statements = usd_statements(
+            split_adjust_statements(
+                load_statements(session, inst.id), load_splits(session, inst.id)
+            ),
+            ccl,
+        )
         px_share = per_share_close(inst, series, series_kind)
         hist_rows = ratio_history(statements, px_share)
         current = (

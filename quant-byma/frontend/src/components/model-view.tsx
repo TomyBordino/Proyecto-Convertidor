@@ -1,16 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ResponsiveContainer,
-  Scatter,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, CartesianGrid, ComposedChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import useSWR from "swr";
 
 import { ErrorState, LoadingState } from "@/components/state";
@@ -29,7 +20,7 @@ export function ModelView() {
   if (error) return <ErrorState error={error} />;
   if (!data) return <LoadingState />;
   const r = data.horizons[h];
-  const calib = (r?.calibration ?? []).map((c) => ({ pred: c.pred * 100, observed: c.observed * 100, n: c.n }));
+  const calib = (r?.calibration ?? []).map((c) => ({ decile: c.decile, observed: c.observed * 100, n: c.n }));
 
   return (
     <div className="space-y-6">
@@ -89,33 +80,31 @@ export function ModelView() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Calibración (sin recalibrar)</CardTitle>
+                <CardTitle>Acierto por decil de puntaje</CardTitle>
                 <CardDescription>
-                  Probabilidad predicha vs frecuencia observada por decil, {r.oos_samples?.toLocaleString("es-AR")} predicciones
-                  fuera de muestra ({r.oos_years?.[0]}–{r.oos_years?.at(-1)}). La diagonal es la calibración perfecta.
+                  Frecuencia de suba observada fuera de muestra en cada décimo del puntaje (1 = peor, 10 = mejor), sobre{" "}
+                  {r.oos_samples?.toLocaleString("es-AR")} predicciones ({r.oos_years?.[0]}–{r.oos_years?.at(-1)}). La línea
+                  es la tasa base.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={280}>
                   <ComposedChart data={calib} margin={{ left: 0, right: 12, top: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis type="number" dataKey="pred" domain={[20, 90]} tick={axis} unit="%" name="Predicha" />
-                    <YAxis type="number" dataKey="observed" domain={[20, 90]} tick={axis} unit="%" width={44} name="Observada" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="decile" tick={axis} />
+                    <YAxis domain={[40, 70]} tick={axis} unit="%" width={44} />
                     <Tooltip
                       contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                      formatter={(v) => `${Number(v).toFixed(1)}%`}
+                      formatter={(v, name) => [`${Number(v).toFixed(1)}%`, name === "observed" ? "Subió" : "Retorno mediano"]}
+                      labelFormatter={(d) => `Decil ${d}`}
                     />
-                    <Line
-                      data={[{ pred: 20, observed: 20 }, { pred: 90, observed: 90 }]}
-                      dataKey="observed"
-                      stroke="var(--muted-foreground)"
-                      strokeDasharray="4 4"
-                      dot={false}
-                      legendType="none"
-                    />
-                    <Scatter dataKey="observed" fill="#3e9fff" />
+                    <ReferenceLine y={(r.base_rate ?? 0) * 100} stroke="var(--muted-foreground)" strokeDasharray="4 4" />
+                    <Bar dataKey="observed" fill="#3e9fff" radius={[3, 3, 0, 0]} />
                   </ComposedChart>
                 </ResponsiveContainer>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  La señal es más fuerte en los deciles bajos: sirve sobre todo para evitar los activos más débiles.
+                </p>
               </CardContent>
             </Card>
 

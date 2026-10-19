@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 
 PRIMARY_HORIZON = 60
 # Diferencia mínima con la tasa base para hablar de sesgo (puntos de probabilidad).
-BIAS_MARGIN = 0.04
+BIAS_MARGIN = 0.015
 MIN_SECTOR_PEERS = 5
 
 
@@ -90,8 +90,8 @@ def _r(x: object) -> float | None:
 
 
 def bias(pred: dict | None) -> tuple[str, bool]:
-    """Sesgo vs la tasa base y si es estadísticamente distinguible de ella (el intervalo
-    de las situaciones similares no contiene a la tasa base)."""
+    """Sesgo vs la tasa base. Exige que el intervalo de confianza de las situaciones
+    históricas similares excluya a la tasa base; si no, el sesgo es Neutral."""
     if not pred or pred.get("base_rate") is None:
         return "Sin datos", False
     if pred.get("has_skill") is False:
@@ -99,11 +99,13 @@ def bias(pred: dict | None) -> tuple[str, bool]:
     p, base = pred["probability"], pred["base_rate"]
     sim = pred["similar"]
     significant = sim["n"] > 0 and (sim["ci_low"] > base or sim["ci_high"] < base)
-    if p >= base + BIAS_MARGIN:
-        return "Favorable", significant
-    if p <= base - BIAS_MARGIN:
-        return "Desfavorable", significant
-    return "Neutral", significant
+    # Solo se declara sesgo cuando la evidencia lo respalda: una diferencia chica sin
+    # significancia no distingue al activo de uno cualquiera.
+    if p >= base + BIAS_MARGIN and significant:
+        return "Favorable", True
+    if p <= base - BIAS_MARGIN and significant:
+        return "Desfavorable", True
+    return "Neutral", False
 
 
 def summary(ticker: str, d: dict) -> str:
@@ -130,13 +132,19 @@ def summary(ticker: str, d: dict) -> str:
         sim = pred["similar"]
         parts.append(
             f"Probabilidad de cotizar más alto en {PRIMARY_HORIZON} ruedas: "
-            f"{pred['probability']:.0%} (tasa base del universo {pred['base_rate']:.0%}). "
-            f"En situaciones históricas similares se cumplió el "
-            f"{sim['hit_rate']:.0%} de las veces (IC95 {sim['ci_low']:.0%}–{sim['ci_high']:.0%}, "
-            f"n efectivo {sim['n_effective']})."
-            if sim["hit_rate"] is not None
-            else ""
+            f"{pred['probability']:.0%} (tasa base del universo {pred['base_rate']:.0%})."
         )
+        if pred.get("decile"):
+            parts.append(
+                f"Su puntaje está en el decil {pred['decile']} de 10, que históricamente subió "
+                f"el {pred['decile_hit_rate']:.0%} de las veces."
+            )
+        if sim["hit_rate"] is not None:
+            parts.append(
+                f"En situaciones históricas similares se cumplió el {sim['hit_rate']:.0%} de las "
+                f"veces (IC95 {sim['ci_low']:.0%}–{sim['ci_high']:.0%}, "
+                f"n efectivo {sim['n_effective']})."
+            )
     return " ".join(p for p in parts if p)
 
 

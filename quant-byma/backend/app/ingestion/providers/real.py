@@ -82,11 +82,14 @@ class _YahooPrices:
 
         self._y = YahooProvider()
         self._cache: dict[str, pd.DataFrame] = {}
+        self.splits: dict[str, pd.Series] = {}
 
     def prefetch(self, symbols: list[str], start: date, end: date) -> int:
         from app.ingestion.providers.yahoo import batch_history
 
-        self._cache.update(batch_history(symbols, start, end))
+        data, splits = batch_history(symbols, start, end)
+        self._cache.update(data)
+        self.splits.update(splits)
         return len(self._cache)
 
     def history(self, symbol: str, start: date, end: date) -> pd.DataFrame:
@@ -186,6 +189,13 @@ class RealDataProvider:
                 pos = 1 if self.us and isinstance(self.us[0], TiingoSource) else 0
                 self.us.insert(pos, src)
             return
+
+    def splits(self, symbol: str) -> pd.Series | None:
+        """Splits conocidos del símbolo (None si la fuente no los informó)."""
+        for src in self.us:
+            if isinstance(src, _YahooPrices) and src._cache:
+                return src.splits.get(symbol, pd.Series(dtype=float))
+        return None
 
     def metadata(self, symbol: str) -> dict:
         from app.ingestion.providers.yahoo import metadata

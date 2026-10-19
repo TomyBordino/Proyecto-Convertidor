@@ -24,7 +24,14 @@ import pandas as pd
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import FundamentalPeriod, FxRate, IngestionRun, Instrument, PriceBar
+from app.db.models import (
+    FundamentalPeriod,
+    FxRate,
+    IngestionRun,
+    Instrument,
+    PriceBar,
+    SplitEvent,
+)
 from app.ingestion.ccl import market_ccl_series
 from app.ingestion.discovery import (
     estimate_ratio,
@@ -362,6 +369,22 @@ def run_ingestion(
         counts["bars"] += store_bars(session, inst, "US", us_data[t][cand])
         pairs[t] = (ba["close"], us["close"], est.ratio, vol_ars.get(t))
     session.flush()
+
+    # ------------------------------------------------------------- splits
+    splits_fn = getattr(provider, "splits", None)
+    if splits_fn:
+        for inst in insts.values():
+            if not inst.us_symbol or inst.active is False:
+                continue
+            sp = splits_fn(inst.us_symbol)
+            if sp is None:
+                continue  # la fuente no informó splits: se conservan los guardados
+            session.execute(delete(SplitEvent).where(SplitEvent.instrument_id == inst.id))
+            session.add_all(
+                SplitEvent(instrument_id=inst.id, day=d.date(), ratio=float(r))
+                for d, r in sp.items()
+            )
+        session.flush()
 
     # -------------------------------------------------------- CCL final
     ccl = build_market_ccl(pairs)

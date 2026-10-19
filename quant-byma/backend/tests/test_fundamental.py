@@ -92,3 +92,36 @@ def test_inflation_adjust_only_ars():
 
 def test_underlying_equivalent():
     assert underlying_equivalent_usd(15_000, 20, 1300) == pytest.approx(230.769, rel=1e-4)
+
+
+def test_split_adjust_statements():
+    import pandas as pd
+
+    from app.services.data import split_adjust_statements
+
+    st = [
+        FinancialStatement(period_end=date(2019, 12, 31), currency="USD", shares_outstanding=100),
+        FinancialStatement(period_end=date(2020, 12, 31), currency="USD", shares_outstanding=100),
+        # split 4:1 el 2021-07-20; el balance de 2021 ya informa acciones post-split
+        FinancialStatement(period_end=date(2021, 12, 31), currency="USD", shares_outstanding=400),
+    ]
+    splits = pd.Series([4.0], index=pd.to_datetime(["2021-07-20"]))
+    out = split_adjust_statements(st, splits)
+    assert [s.shares_outstanding for s in out] == [400, 400, 400]
+
+
+def test_split_already_in_cover_page_not_double_counted():
+    import pandas as pd
+
+    from app.services.data import split_adjust_statements
+
+    st = [
+        FinancialStatement(period_end=date(2023, 1, 29), currency="USD", shares_outstanding=250),
+        # cierre 2024-01-28, split 10:1 el 2024-06-10: la portada (marzo) todavía es pre-split
+        FinancialStatement(period_end=date(2024, 1, 28), currency="USD", shares_outstanding=247),
+        # cierre 2025-01-26: portada post-split (salto ≈ 10x)
+        FinancialStatement(period_end=date(2025, 1, 26), currency="USD", shares_outstanding=2440),
+    ]
+    splits = pd.Series([10.0], index=pd.to_datetime(["2024-06-10"]))
+    out = [s.shares_outstanding for s in split_adjust_statements(st, splits)]
+    assert out == [2500, 2470, 2440]
