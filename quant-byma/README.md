@@ -166,6 +166,19 @@ Ver [PENDIENTES.md](PENDIENTES.md).
 
 ## Puesta en marcha
 
+### Windows, sin consola
+
+Doble clic en **`Iniciar QuantBYMA.bat`** (carpeta `quant-byma`). La primera vez instala dependencias,
+compila la web y crea el acceso directo **Quant BYMA** en el escritorio; después abre el navegador en
+http://localhost:3000. Backend y web quedan corriendo en segundo plano (registros en `logs/`), con la
+actualización automática de las 18:15 activada; si los datos tienen más de 20 horas, se actualizan solos
+en segundo plano al abrir.
+
+- **`Detener QuantBYMA.bat`**: cierra todo.
+- **`Actualizar QuantBYMA.bat`**: baja la última versión del código (`git pull`), recompila y vuelve a abrir.
+
+### Manual
+
 ```bash
 cd backend && python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
 cp .env.example .env                              # completar QB_SEC_USER_AGENT (y API keys opcionales)

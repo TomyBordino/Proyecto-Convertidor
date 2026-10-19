@@ -51,6 +51,11 @@ Estado al 2026-10-18, después de validar la ingesta con datos reales (ver READM
 
 ## Infraestructura
 
+- [ ] **Publicar online** (decidido para más adelante): web en Netlify y backend + PostgreSQL + ingesta
+      diaria en Railway (la ingesta necesita varios GB de RAM y minutos de ejecución; Netlify solo no
+      alcanza). Con usuario y contraseña, y con las acciones que gastan (actualizar datos, clasificar
+      noticias con Claude) protegidas. Hoy se usa el lanzador local (`Iniciar QuantBYMA.bat`).
+
 - [ ] **TimescaleDB**: probar `docker compose up -d db` + `app/db/timescale.sql` (no se ejecutó;
       el entorno de desarrollo no tenía Docker).
 - [ ] **Deploy**: hoy corre solo en local. Falta definir hosting (backend + DB + scheduler
