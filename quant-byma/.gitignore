@@ -1,5 +1,6 @@
 backend/.venv/
 backend/*.db
+backend/*.db-journal
 backend/.env
 __pycache__/
 .pytest_cache/
