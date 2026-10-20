@@ -268,7 +268,8 @@ function Results({ data }: { data: BacktestResult }) {
           <p className="font-medium">{verdict}</p>
           <p className="mt-1 text-muted-foreground">
             {data.periods} rebalanceos entre {data.first_date} y {data.last_date}. Le ganó al universo en el{" "}
-            {fmtProb(data.beat_universe)} de los períodos y en {data.years_beat_universe} de {data.by_year.length} años.
+            {fmtProb(data.beat_universe)} de los períodos y en {data.years_beat_universe} de {data.by_year.length} años; al SPY le ganó en{" "}
+            {data.by_year.filter((y) => y.strategy > y.benchmark).length} de {data.by_year.length} años.
             Rotación promedio por rebalanceo: {fmtProb(data.avg_turnover)}.
             {data.time_in_market != null && data.time_in_market < 1 && ` Estuvo invertida el ${fmtProb(data.time_in_market)} del tiempo.`}
           </p>
@@ -351,6 +352,7 @@ function Results({ data }: { data: BacktestResult }) {
                 <TableHead className="text-right">Universo</TableHead>
                 <TableHead className="text-right">SPY</TableHead>
                 <TableHead className="text-right">Diferencia vs universo</TableHead>
+                <TableHead className="text-right">Diferencia vs SPY</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="tabular">
@@ -362,6 +364,9 @@ function Results({ data }: { data: BacktestResult }) {
                   <TableCell className="text-right">{fmtReturn(y.benchmark)}</TableCell>
                   <TableCell className={cn("text-right", y.strategy - y.universe >= 0 ? "text-positive" : "text-negative")}>
                     {fmtReturn(y.strategy - y.universe)}
+                  </TableCell>
+                  <TableCell className={cn("text-right", y.strategy - y.benchmark >= 0 ? "text-positive" : "text-negative")}>
+                    {fmtReturn(y.strategy - y.benchmark)}
                   </TableCell>
                 </TableRow>
               ))}
