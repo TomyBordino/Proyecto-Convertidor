@@ -52,6 +52,15 @@ export function Dashboard() {
     setRefreshError(null);
     try {
       await api.ingest();
+      // La ingesta corre en segundo plano en el backend: se consulta su estado cada 10 s.
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 10_000));
+        const st = await api.ingestStatus();
+        if (!st.running) {
+          if (st.error) setRefreshError(st.error);
+          break;
+        }
+      }
       await mutate();
     } catch (e) {
       setRefreshError(e instanceof Error ? e.message : String(e));
@@ -86,9 +95,16 @@ export function Dashboard() {
         </div>
         <Button variant="outline" size="sm" onClick={refresh} disabled={refreshing}>
           <RefreshCw className={refreshing ? "animate-spin" : ""} />
-          {refreshing ? "Actualizando…" : "Actualizar datos"}
+          {refreshing ? "Actualizando… (10–20 min)" : "Actualizar datos"}
         </Button>
       </div>
+
+      {refreshing && (
+        <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+          Actualizando precios, balances, modelo y eventos en segundo plano. Podés seguir usando la plataforma; esta
+          tabla se recarga sola al terminar.
+        </p>
+      )}
 
       {refreshError && (
         <p className="rounded-md border border-negative/40 bg-negative/10 px-3 py-2 text-sm text-negative">

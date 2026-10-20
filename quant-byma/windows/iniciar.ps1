@@ -85,6 +85,12 @@ if (-not (Test-Path $buildId) -or -not (Test-Path $marcaBuild) -or (Get-Content 
 }
 
 # 3. Backend (con la actualización diaria automática de las 18:15 activada)
+$marcaBackend = Join-Path $logs "backend.version"
+if ((Puerto-Abierto 8000) -and (-not (Test-Path $marcaBackend) -or (Get-Content $marcaBackend) -ne $version)) {
+    Paso "Reiniciando el backend con la versión nueva"
+    & (Join-Path $PSScriptRoot "detener.ps1") -SoloBackend
+    Start-Sleep -Seconds 2
+}
 if (Puerto-Abierto 8000) {
     Paso "El backend ya estaba corriendo"
 } else {
@@ -94,6 +100,7 @@ if (Puerto-Abierto 8000) {
         -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000" `
         -RedirectStandardOutput (Join-Path $logs "backend.log") -RedirectStandardError (Join-Path $logs "backend-errores.log")
     Set-Content (Join-Path $logs "backend.pid") $p.Id
+    Set-Content $marcaBackend $version
 }
 
 # 4. Web

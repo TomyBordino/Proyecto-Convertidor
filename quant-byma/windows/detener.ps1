@@ -1,16 +1,16 @@
 ﻿# Detiene el backend, la web y una ingesta en curso de Quant BYMA.
-param([switch]$SoloWeb)
+param([switch]$SoloWeb, [switch]$SoloBackend)
 # Nada de lo que pase acá debe cortar al script que lo llama (por ejemplo, Actualizar).
 $ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
 $logs = Join-Path $root "logs"
-$puertos = if ($SoloWeb) { @(3000) } else { @(8000, 3000) }
+$puertos = if ($SoloWeb) { @(3000) } elseif ($SoloBackend) { @(8000) } else { @(8000, 3000) }
 
 $pids = Get-NetTCPConnection -LocalPort $puertos -State Listen -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess -Unique
 foreach ($id in $pids) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
 
-$archivos = if ($SoloWeb) { @("web.pid") } else { @("backend.pid", "web.pid", "ingesta.pid") }
+$archivos = if ($SoloWeb) { @("web.pid") } elseif ($SoloBackend) { @("backend.pid") } else { @("backend.pid", "web.pid", "ingesta.pid") }
 foreach ($f in $archivos) {
     $ruta = Join-Path $logs $f
     if (Test-Path $ruta) {
@@ -23,4 +23,4 @@ foreach ($f in $archivos) {
         Remove-Item $ruta -ErrorAction SilentlyContinue
     }
 }
-if (-not $SoloWeb) { Write-Host "Quant BYMA detenido." -ForegroundColor Green }
+if (-not $SoloWeb -and -not $SoloBackend) { Write-Host "Quant BYMA detenido." -ForegroundColor Green }

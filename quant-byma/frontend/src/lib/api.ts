@@ -458,6 +458,13 @@ export interface FieldInfo {
   type: "num" | "str" | "bool";
 }
 
+export interface IngestStatus {
+  running: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -493,6 +500,7 @@ export const api = {
   saveFilter: (name: string, definition: FilterDefinition) =>
     request<SavedFilter>("/api/filters", { method: "POST", body: JSON.stringify({ name, definition }) }),
   deleteFilter: (id: number) => request<void>(`/api/filters/${id}`, { method: "DELETE" }),
-  ingest: () => request<Record<string, unknown>>("/api/ingest", { method: "POST" }),
+  ingest: () => request<IngestStatus & { started: boolean }>("/api/ingest", { method: "POST" }),
+  ingestStatus: () => request<IngestStatus>("/api/ingest/status"),
   refreshEvents: () => request<Record<string, unknown>>("/api/events/refresh", { method: "POST" }),
 };

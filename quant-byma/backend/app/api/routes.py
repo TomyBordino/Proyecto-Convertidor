@@ -27,7 +27,7 @@ from app.api.schemas import (
 from app.config import get_settings
 from app.db.models import IngestionRun, Instrument, ModelRun, SavedFilter, ScoreSnapshot
 from app.db.session import get_session
-from app.ingestion.providers import build_provider
+from app.services import jobs
 from app.services.analytics import (
     analysis_series,
     per_share_close,
@@ -44,7 +44,7 @@ from app.services.data import (
     to_usd_ccl,
 )
 from app.services.events import latest_event_report, news_pressure
-from app.services.ingestion import IngestionError, implied_with_ratio_history, run_ingestion
+from app.services.ingestion import implied_with_ratio_history
 
 router = APIRouter(prefix="/api")
 SessionDep = Depends(get_session)
@@ -383,19 +383,15 @@ def delete_filter(filter_id: int, session: Session = SessionDep) -> None:
     session.commit()
 
 
-@router.post("/ingest")
-def ingest(
-    session: Session = SessionDep,
-    provider: str | None = Query(None, pattern="^(real|yahoo|demo)$"),
-) -> dict:
-    settings = get_settings()
-    p = build_provider(provider or settings.data_provider)
-    try:
-        return run_ingestion(
-            session,
-            p,
-            history_days=settings.history_days,
-            us_history_start=settings.model_history_start,
-        )
-    except IngestionError as exc:
-        raise HTTPException(502, str(exc)) from exc
+@router.post("/ingest", status_code=202)
+def ingest(provider: str | None = Query(None, pattern="^(real|yahoo|demo)$")) -> dict:
+    """Lanza la ingesta (y la actualización de eventos) en segundo plano."""
+    from app.scheduler import ingest_job
+
+    started = jobs.start(lambda: ingest_job(provider))
+    return {"started": started, **jobs.status()}
+
+
+@router.get("/ingest/status")
+def ingest_status() -> dict:
+    return jobs.status()

@@ -142,3 +142,36 @@ def test_screener_by_stage_and_probability(seeded_client):
     r = seeded_client.post("/api/screener/run", json=body)
     assert r.status_code == 200
     assert r.json()["count"] > 0
+
+
+def test_background_job_reports_status_and_rejects_concurrent_runs():
+    import threading
+
+    from app.services import jobs
+
+    release = threading.Event()
+    assert jobs.start(lambda: release.wait(5) or {})
+    assert jobs.status()["running"] is True
+    assert jobs.start(lambda: {}) is False  # no se superponen ingestas
+    release.set()
+    for _ in range(100):
+        if not jobs.status()["running"]:
+            break
+        threading.Event().wait(0.05)
+    st = jobs.status()
+    assert st["running"] is False and st["error"] is None and st["finished_at"]
+
+    def boom():
+        raise RuntimeError("fuente caída")
+
+    assert jobs.start(boom)
+    for _ in range(100):
+        if not jobs.status()["running"]:
+            break
+        threading.Event().wait(0.05)
+    assert "fuente caída" in jobs.status()["error"]
+
+
+def test_ingest_status_endpoint(seeded_client):
+    r = seeded_client.get("/api/ingest/status")
+    assert r.status_code == 200 and "running" in r.json()
