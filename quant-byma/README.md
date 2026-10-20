@@ -175,6 +175,15 @@ capital mínimo según la comisión mínima del broker) a la cantidad elegida. C
 tendencia rindió más en toda la historia, pero casi toda la ventaja vino de 2016–2026 y con más
 volatilidad; con 30–50 los resultados son más parejos entre períodos.
 
+### Ponderaciones probadas
+
+Mismo método (diseño 2004–2015, prueba 2016–hoy), con 10, 20 y 30 papeles y las tres estrategias:
+**inversa de la volatilidad** fue la que redujo la peor caída de forma consistente (es la de las
+estrategias validadas); **por ranking** mejoró el Sharpe en los dos períodos solo con 10 papeles (Robusta
+0,54→0,57 y 0,95→1,01) con algo más de caída, y no con 20–30; la **paridad de riesgo con correlaciones**
+(36 meses, contracción a la diagonal) fue inestable: muy buena en algunos casos del diseño y peor en la
+prueba. Las cuatro quedan como opción del selector; las estrategias validadas no se cambiaron.
+
 ## Mi cartera
 
 Página **Mi cartera** (`app/services/portfolio.py`, `portfolio_import.py`): tenencias cargadas a mano o

@@ -75,13 +75,67 @@ def _ranked(day: pd.DataFrame, s: Strategy, key: str) -> list[str]:
     return list(d["ticker"])
 
 
-def _weights(day: pd.DataFrame, picks: list[str], s: Strategy) -> dict[str, float]:
+WEIGHTINGS = ("equal", "inv_vol", "rank", "risk_parity")
+RP_MONTHS = 36  # meses de historia para las correlaciones de la paridad de riesgo
+
+
+def monthly_history(panel: pd.DataFrame) -> pd.DataFrame:
+    """Retornos de 20 ruedas por fecha de inicio (fecha × ticker), para estimar correlaciones."""
+    if "fwd_20" not in panel.columns:
+        return pd.DataFrame()
+    return panel.pivot_table(index="date", columns="ticker", values="fwd_20", aggfunc="last")
+
+
+def _risk_parity(cov: np.ndarray, iters: int = 200) -> np.ndarray:
+    """Pesos de contribución al riesgo igual (iteración multiplicativa)."""
+    n = len(cov)
+    w = 1 / np.sqrt(np.clip(np.diag(cov), 1e-8, None))
+    w /= w.sum()
+    for _ in range(iters):
+        port = float(w @ cov @ w)
+        if port <= 0:
+            break
+        rc = w * (cov @ w) / port
+        w = w * np.sqrt((1 / n) / np.clip(rc, 1e-10, None))
+        w /= w.sum()
+    return w
+
+
+def _weights(
+    day: pd.DataFrame,
+    picks: list[str],
+    s: Strategy,
+    hist: pd.DataFrame | None = None,
+    when: pd.Timestamp | None = None,
+) -> dict[str, float]:
     if not picks:
         return {}
+    n = len(picks)
+    if s.weighting == "rank":
+        raw = pd.Series([n - i for i in range(n)], index=picks, dtype=float)
+        return {t: round(float(v), 4) for t, v in (raw / raw.sum()).items()}
     if s.weighting == "inv_vol" and "vol_60" in day.columns:
         inv = 1 / day.set_index("ticker").loc[picks, "vol_60"].clip(lower=0.1).fillna(0.3)
         return {t: round(float(v), 4) for t, v in (inv / inv.sum()).items()}
-    return {t: round(1 / len(picks), 4) for t in picks}
+    if s.weighting == "risk_parity" and hist is not None and when is not None and not hist.empty:
+        # Solo retornos ya cerrados a la fecha: períodos que empezaron hace 28+ días.
+        past = hist[hist.index <= when - pd.Timedelta(days=28)]
+        past = past.iloc[::-1].iloc[::4].iloc[:RP_MONTHS]  # mensuales sin solapamiento
+        cols = [t for t in picks if t in past.columns]
+        r = past[cols].dropna(axis=1, thresh=12)
+        if r.shape[1] >= 2:
+            cov = r.cov().to_numpy()
+            # Contracción hacia la diagonal: con pocos meses la matriz es inestable.
+            cov = 0.5 * cov + 0.5 * np.diag(np.diag(cov))
+            cov = np.nan_to_num(cov, nan=0.0) + np.eye(len(cov)) * 1e-6
+            w = pd.Series(_risk_parity(cov), index=r.columns)
+            missing = [t for t in picks if t not in w.index]
+            if missing:  # sin historia suficiente: peso promedio
+                w = pd.concat([w * (1 - len(missing) / n), pd.Series(1 / n, index=missing)])
+            w = w / w.sum()
+            return {t: round(float(w[t]), 4) for t in picks}
+        return _weights(day, picks, Strategy(weighting="inv_vol"), None, None)
+    return {t: round(1 / n, 4) for t in picks}
 
 
 def current_plan(panel: pd.DataFrame, meta: dict[str, dict], s: Strategy) -> dict:
@@ -108,7 +162,11 @@ def current_plan(panel: pd.DataFrame, meta: dict[str, dict], s: Strategy) -> dic
         "as_of": str(pd.Timestamp(last).date()),
         "out_of_market": out,
         "benchmark_stage": int(spy.iloc[0]) if not spy.empty and pd.notna(spy.iloc[0]) else None,
-        "weights": {} if out else _weights(day, picks, s),
+        "weights": {}
+        if out
+        else _weights(
+            day, picks, s, monthly_history(panel) if s.weighting == "risk_parity" else None, last
+        ),
         "keep_zone": ranked[: int(round(s.top_n * max(1.0, s.buffer)))],
     }
 
@@ -157,6 +215,7 @@ def run_backtest(
     every = max(1, s.rebalance // STEP)
     rebal = dates[len(dates) - 1 :: -every][::-1]  # alineado a la última fecha
     by_date = dict(tuple(eligible.groupby("date")))
+    hist = monthly_history(panel) if s.weighting == "risk_parity" else None
     uni_by_date = dict(tuple(universe.groupby("date")))
 
     rows: list[dict] = []
@@ -194,12 +253,11 @@ def run_backtest(
         held = set(picks)
         turnover = 1.0 if not prev else len(held - prev) / len(held)
         cost = 2 * turnover * s.cost_bps / 10_000
-        if s.weighting == "inv_vol" and "vol_60" in day.columns:
-            vol = day.set_index("ticker").loc[picks, "vol_60"].clip(lower=0.1).fillna(0.3)
-            w = (1 / vol).where(fwd.notna())
-            gross = float((fwd.fillna(0) * w).sum() / w.sum()) if w.sum() > 0 else 0.0
-        else:
+        if s.weighting == "equal":
             gross = float(fwd.mean(skipna=True))
+        else:
+            w = pd.Series(_weights(day, picks, s, hist, d)).reindex(fwd.index).where(fwd.notna())
+            gross = float((fwd.fillna(0) * w).sum() / w.sum()) if w.sum() > 0 else 0.0
         rows.append(
             {
                 "date": d,

@@ -1,6 +1,7 @@
 import io
 from datetime import date
 
+import numpy as np
 import openpyxl
 import pandas as pd
 import pytest
@@ -153,8 +154,8 @@ def test_backtest_on_persistent_signal_beats_universe_and_reports_costs():
     assert costly["metrics"]["strategy"]["cagr"] < m["strategy"]["cagr"]
     capped = run_backtest(panel, meta, Strategy(top_n=8, max_per_sector=1))
     assert len(capped["picks"]) == 4
-    vw = run_backtest(panel, meta, Strategy(top_n=8, weighting="inv_vol"))
-    assert vw["status"] == "ok"
+    for w in ("inv_vol", "rank", "risk_parity"):
+        assert run_backtest(panel, meta, Strategy(top_n=8, weighting=w))["status"] == "ok"
     # Con el SPY "en etapa bajista" siempre, la cartera queda en liquidez a la tasa dada.
     always_bear = panel.copy()
     always_bear.loc[always_bear["ticker"] == "T0", "stage"] = 4
@@ -212,3 +213,19 @@ def test_backtest_presets_endpoint(seeded_client):
     assert row["buffer"] in (1.0, 1.5, 2.0, 3.0)
     assert {"design", "test", "full"} <= set(row)
     assert "NaN" not in r.text
+
+
+def test_weighting_schemes():
+    from app.analytics.backtest import _risk_parity, _weights
+
+    day = pd.DataFrame({"ticker": ["A", "B", "C"], "vol_60": [0.1, 0.2, 0.4]})
+    rank = _weights(day, ["A", "B", "C"], Strategy(weighting="rank"))
+    assert rank == pytest.approx({"A": 3 / 6, "B": 2 / 6, "C": 1 / 6}, abs=1e-3)
+    inv = _weights(day, ["A", "B", "C"], Strategy(weighting="inv_vol"))
+    assert inv["A"] > inv["B"] > inv["C"] and sum(inv.values()) == pytest.approx(1, abs=1e-3)
+    # Paridad de riesgo: dos activos muy correlacionados se reparten el peso de uno.
+    cov = np.array([[0.04, 0.038, 0.0], [0.038, 0.04, 0.0], [0.0, 0.0, 0.04]])
+    w = _risk_parity(cov)
+    rc = w * (cov @ w) / (w @ cov @ w)
+    assert rc == pytest.approx([1 / 3] * 3, abs=1e-3)
+    assert w[2] > w[0] and w[2] > w[1]

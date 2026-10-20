@@ -127,7 +127,7 @@ def backtest(
     max_per_sector: int | None = Query(None, ge=1, le=50),
     cost_bps: float = Query(50, ge=0, le=500),
     buffer: float = Query(2.0, ge=1.0, le=5.0),
-    weighting: Literal["equal", "inv_vol"] = "equal",
+    weighting: Literal["equal", "inv_vol", "rank", "risk_parity"] = "equal",
     regime: Literal["none", "spy_bear", "spy_weak"] = "none",
     end_year: int | None = Query(None, ge=2000, le=2100),
     start_year: int | None = Query(None, ge=2000, le=2100),

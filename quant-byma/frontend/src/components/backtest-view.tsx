@@ -175,9 +175,11 @@ export function BacktestView() {
             </Select>
           </Field>
           <Field label="Ponderación">
-            <Select value={weighting} onChange={(e) => setWeighting(e.target.value)} title="Inversa de la volatilidad: los papeles más volátiles pesan menos">
+            <Select value={weighting} onChange={(e) => setWeighting(e.target.value)} title="Igual peso: capital ÷ N. Inversa de la volatilidad: los más volátiles pesan menos. Por ranking: el primero pesa N veces más que el último. Paridad de riesgo: cada papel aporta el mismo riesgo, teniendo en cuenta cuánto se mueven juntos (36 meses)">
               <option value="equal">Igual peso</option>
               <option value="inv_vol">Inversa de la volatilidad</option>
+              <option value="rank">Por ranking (#1 pesa más)</option>
+              <option value="risk_parity">Paridad de riesgo (con correlaciones)</option>
             </Select>
           </Field>
           <Field label="Filtro de mercado">
@@ -407,6 +409,13 @@ function StrategyGuide({
             </div>
             <p className="rounded-md border p-3 text-xs">
               <b>Con {topN} papeles:</b> {N_ADVICE[topN] ?? ""}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              <b>¿Por qué ponderar por la inversa de la volatilidad?</b> Se compararon cuatro formas de repartir el capital. La inversa
+              de la volatilidad fue la que bajó la peor caída de forma consistente en los dos períodos. “Por ranking” mejoró el
+              retorno por unidad de riesgo solo con carteras chicas (10 papeles), a cambio de algo más de caída; la paridad de riesgo con
+              correlaciones fue muy buena en algunos casos de 2004–2015 y peor en 2016–hoy, por eso no se usa por defecto. Las cuatro
+              están en el selector <i>Ponderación</i>.
             </p>
           </div>
 
