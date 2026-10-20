@@ -2,6 +2,7 @@ import io
 from datetime import date
 
 import openpyxl
+import pandas as pd
 import pytest
 
 from app.analytics.backtest import Strategy, quintile_returns, run_backtest
@@ -152,6 +153,17 @@ def test_backtest_on_persistent_signal_beats_universe_and_reports_costs():
     assert costly["metrics"]["strategy"]["cagr"] < m["strategy"]["cagr"]
     capped = run_backtest(panel, meta, Strategy(top_n=8, max_per_sector=1))
     assert len(capped["picks"]) == 4
+    vw = run_backtest(panel, meta, Strategy(top_n=8, weighting="inv_vol"))
+    assert vw["status"] == "ok"
+    # Con el SPY "en etapa bajista" siempre, la cartera queda en liquidez a la tasa dada.
+    always_bear = panel.copy()
+    always_bear.loc[always_bear["ticker"] == "T0", "stage"] = 4
+    cash = pd.Series(0.12, index=pd.DatetimeIndex([panel["date"].min()]))
+    off = run_backtest(
+        always_bear, meta, Strategy(top_n=8, regime="spy_bear", benchmark="T0", cost_bps=0), cash
+    )
+    assert off["time_in_market"] == 0.0
+    assert off["metrics"]["strategy"]["cagr"] == pytest.approx(1.12**1 - 1, abs=0.02)
     q = quintile_returns(panel, 20)
     assert q[-1]["cagr"] > q[0]["cagr"]
     with pytest.raises(ValueError):

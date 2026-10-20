@@ -148,6 +148,23 @@ La ventaja bruta del puntaje existe (el quintil superior rinde 18% anual vs ~15%
 rotación se la come; el colchón la recupera. Hay sesgo de supervivencia (el universo son los activos
 que cotizan hoy), por eso la comparación válida es contra el universo y no el número absoluto.
 
+### Cómo se buscó una estrategia mejor (sin sobreajustar)
+
+Se probaron 216 combinaciones (cantidad de papeles, criterio, ponderación, filtro de mercado, etapas,
+tope por sector) **eligiendo solo con 2004–2015** y midiendo después en **2016–2026**. Las mejores del
+período de diseño (con filtro de mercado y tope por sector) no le ganaron al universo en la prueba: el
+filtro salvó 2008 pero llegó tarde a las caídas rápidas de 2020 y 2022. Las palancas que mejoraron en
+**ambos** períodos fueron: más papeles (20–30 mejor que 10), ordenar por tendencia, excluir la etapa
+bajista y ponderar por la inversa de la volatilidad (menor caída). El tope por sector y quedarse solo
+con la etapa alcista empeoraron en ambos.
+
+| Estrategia (mensual, 0,5% de costo, colchón ×2) | 2004–2015 | 2016–2026 | Total | Peor caída | Años > universo |
+| --- | --- | --- | --- | --- | --- |
+| Universo (igual peso) | 12,4% | 22,3% | 15,7% | −58% | — |
+| Básica: 10 por puntaje (CEDEARs, 0,25%) | 12,2% | 20,4% | 13,6% | −48% | 10/23 |
+| **Robusta**: 30 por tendencia, sin etapa 4, inversa de la volatilidad | 12,7% | 24,2% | 16,1% | −51% | 14/23 |
+| Robusta + liquidez con el SPY bajista | 15,0% | 21,4% | 16,0% | −33% | 13/23 |
+
 ## Mi cartera
 
 Página **Mi cartera** (`app/services/portfolio.py`, `portfolio_import.py`): tenencias cargadas a mano o

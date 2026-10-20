@@ -39,7 +39,13 @@ class Strategy:
     # primeros buffer × N (1 = sin colchón). Baja la rotación y, con ella, los costos.
     buffer: float = 2.0
     start_year: int | None = None
+    end_year: int | None = None  # para separar períodos de diseño y de prueba
     benchmark: str = "SPY"
+    # "equal": igual peso. "inv_vol": peso proporcional a 1 / volatilidad de 3 meses.
+    weighting: str = "equal"
+    # Filtro de régimen: "none"; "spy_bear": a liquidez si el SPY está en etapa 4 (bajista);
+    # "spy_weak": también en etapa 3 (techo). La liquidez rinde la tasa a 3 meses.
+    regime: str = "none"
 
 
 def _annualize(r: pd.Series, per_year: float) -> dict:
@@ -74,22 +80,31 @@ def _select(day: pd.DataFrame, s: Strategy, key: str, held: set[str] | None = No
     return keep + fill
 
 
-def run_backtest(panel: pd.DataFrame, meta: dict[str, dict], s: Strategy) -> dict:
-    """`meta`: ticker → {"kind", "sector"}. Devuelve curvas, métricas y la selección actual."""
+def run_backtest(
+    panel: pd.DataFrame, meta: dict[str, dict], s: Strategy, cash: pd.Series | None = None
+) -> dict:
+    """`meta`: ticker → {"kind", "sector"}. `cash`: tasa anual de la liquidez por fecha (fracción,
+    p. ej. 0,045), usada cuando el filtro de régimen saca la cartera del mercado."""
     if s.rebalance not in REBALANCE:
         raise ValueError(f"rebalanceo debe ser uno de {REBALANCE}")
     if s.sort not in SORT_KEYS:
         raise ValueError(f"orden debe ser uno de {list(SORT_KEYS)}")
     key, target = SORT_KEYS[s.sort], f"fwd_{s.rebalance}"
-    df = panel[["date", "ticker", "score", "trend_score", "value_score", "stage", target]].copy()
+    cols = ["date", "ticker", "score", "trend_score", "value_score", "stage", target]
+    df = panel[cols + (["vol_60"] if "vol_60" in panel.columns else [])].copy()
     df["kind"] = df["ticker"].map(lambda t: meta.get(t, {}).get("kind"))
     df["sector"] = df["ticker"].map(lambda t: meta.get(t, {}).get("sector") or "Sin clasificar")
-    bench = df[df["ticker"] == s.benchmark].set_index("date")[target]
+    bench_rows = df[df["ticker"] == s.benchmark].set_index("date")
+    bench = bench_rows[target]
+    bench_stage = bench_rows["stage"]
+    off_stages = {"spy_bear": {4}, "spy_weak": {3, 4}}.get(s.regime, set())
     universe = df.dropna(subset=["score"])
     if s.kind:
         universe = universe[universe["kind"] == s.kind]
     if s.start_year:
         universe = universe[universe["date"].dt.year >= s.start_year]
+    if s.end_year:
+        universe = universe[universe["date"].dt.year <= s.end_year]
     eligible = universe
     if s.stages:
         eligible = eligible[eligible["stage"].isin(s.stages)]
@@ -107,19 +122,42 @@ def run_backtest(panel: pd.DataFrame, meta: dict[str, dict], s: Strategy) -> dic
     picks_now: list[str] = []
     for d in rebal:
         day = by_date.get(d)
+        out_of_market = bool(off_stages) and bench_stage.get(d) in off_stages
         picks = _select(day, s, key, prev) if day is not None else []
         if d == rebal[-1]:
-            picks_now = picks
+            picks_now = [] if out_of_market else picks
         if not picks or day is None:
             continue
-        fwd = day.set_index("ticker").loc[picks, target]
         uni = uni_by_date[d][target]
+        fwd = day.set_index("ticker").loc[picks, target]
         if fwd.isna().all() or uni.isna().all():
             continue  # período todavía abierto (sin retorno futuro observado)
+        if out_of_market:
+            rate = float(cash.asof(d)) if cash is not None and len(cash) else 0.0
+            gross = (rate if np.isfinite(rate) else 0.0) * s.rebalance / 252
+            cost = 2 * s.cost_bps / 10_000 if prev else 0.0  # se vende todo una sola vez
+            rows.append(
+                {
+                    "date": d,
+                    "strategy": gross - cost,
+                    "gross": gross,
+                    "universe": float(uni.mean(skipna=True)),
+                    "benchmark": float(bench.get(d)) if pd.notna(bench.get(d)) else np.nan,
+                    "turnover": 1.0 if prev else 0.0,
+                    "n": 0,
+                }
+            )
+            prev = set()
+            continue
         held = set(picks)
         turnover = 1.0 if not prev else len(held - prev) / len(held)
         cost = 2 * turnover * s.cost_bps / 10_000
-        gross = float(fwd.mean(skipna=True))
+        if s.weighting == "inv_vol" and "vol_60" in day.columns:
+            vol = day.set_index("ticker").loc[picks, "vol_60"].clip(lower=0.1)
+            w = (1 / vol).where(fwd.notna())
+            gross = float((fwd.fillna(0) * w).sum() / w.sum()) if w.sum() > 0 else 0.0
+        else:
+            gross = float(fwd.mean(skipna=True))
         rows.append(
             {
                 "date": d,
@@ -156,6 +194,7 @@ def run_backtest(panel: pd.DataFrame, meta: dict[str, dict], s: Strategy) -> dic
         "beat_universe": round(float((excess > 0).mean()), 4),
         "avg_turnover": round(float(res["turnover"].iloc[1:].mean()), 4) if len(res) > 1 else None,
         "years_beat_universe": int((years["strategy"] > years["universe"]).sum()),
+        "time_in_market": round(float((res["n"] > 0).mean()), 4),
         "curves": [
             {
                 "time": str(pd.Timestamp(d).date()),

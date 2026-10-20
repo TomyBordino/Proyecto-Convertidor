@@ -24,14 +24,28 @@ export function BacktestView() {
   const [kind, setKind] = useState("");
   const [cap, setCap] = useState("");
   const [cost, setCost] = useState(50);
-  const [startYear, setStartYear] = useState("");
+  const [period, setPeriod] = useState("");
   const [buffer, setBuffer] = useState(2);
+  const [weighting, setWeighting] = useState("equal");
+  const [regime, setRegime] = useState("none");
 
-  const qs = new URLSearchParams({ top_n: String(topN), rebalance: String(rebalance), sort, cost_bps: String(cost), buffer: String(buffer) });
+  function preset(p: "robusta" | "proteccion" | "base") {
+    setTopN(p === "base" ? 20 : 30);
+    setSort(p === "base" ? "score" : "trend");
+    setStages(p === "base" ? "" : "1,2,3");
+    setWeighting(p === "base" ? "equal" : "inv_vol");
+    setRegime(p === "proteccion" ? "spy_bear" : "none");
+    setCap("");
+    setBuffer(2);
+  }
+
+  const qs = new URLSearchParams({ top_n: String(topN), rebalance: String(rebalance), sort, cost_bps: String(cost), buffer: String(buffer), weighting, regime });
   if (stages) qs.set("stages", stages);
   if (kind) qs.set("kind", kind);
   if (cap) qs.set("max_per_sector", cap);
-  if (startYear) qs.set("start_year", startYear);
+  const [from, to] = period.split("-");
+  if (from) qs.set("start_year", from);
+  if (to) qs.set("end_year", to);
   const { data, error, isLoading, mutate } = useSWR<BacktestResult>(`/api/backtest?${qs}`, fetcher, { keepPreviousData: true });
 
   return (
@@ -44,6 +58,21 @@ export function BacktestView() {
           en dólares, con dividendos y descontando costos por la rotación de la cartera.
         </p>
       </div>
+
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-2 p-4 text-sm">
+          <span className="text-xs text-muted-foreground">Estrategias validadas:</span>
+          <Button size="sm" variant="outline" onClick={() => preset("robusta")} title="30 papeles, tendencia, sin etapa bajista, ponderados por volatilidad">
+            Robusta
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => preset("proteccion")} title="Robusta + liquidez cuando el SPY está en etapa bajista">
+            Robusta con protección
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => preset("base")}>
+            Volver a la básica
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 p-4 text-sm">
@@ -112,14 +141,26 @@ export function BacktestView() {
               <option value={3}>×3</option>
             </Select>
           </Field>
-          <Field label="Desde">
-            <Select value={startYear} onChange={(e) => setStartYear(e.target.value)}>
+          <Field label="Ponderación">
+            <Select value={weighting} onChange={(e) => setWeighting(e.target.value)} title="Inversa de la volatilidad: los papeles más volátiles pesan menos">
+              <option value="equal">Igual peso</option>
+              <option value="inv_vol">Inversa de la volatilidad</option>
+            </Select>
+          </Field>
+          <Field label="Filtro de mercado">
+            <Select value={regime} onChange={(e) => setRegime(e.target.value)} title="Pasa a liquidez (tasa a 3 meses) cuando el SPY está en etapa bajista">
+              <option value="none">Siempre invertido</option>
+              <option value="spy_bear">Liquidez si el SPY está bajista</option>
+              <option value="spy_weak">Liquidez si el SPY está en techo o bajista</option>
+            </Select>
+          </Field>
+          <Field label="Período">
+            <Select value={period} onChange={(e) => setPeriod(e.target.value)}>
               <option value="">Toda la historia</option>
-              {[2010, 2015, 2020, 2022].map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
+              <option value="-2015">2004–2015 (diseño)</option>
+              <option value="2016-">2016–hoy (prueba)</option>
+              <option value="2020-">Desde 2020</option>
+              <option value="2022-">Desde 2022</option>
             </Select>
           </Field>
           {isLoading && <span className="text-xs text-muted-foreground">Calculando…</span>}
@@ -229,6 +270,7 @@ function Results({ data }: { data: BacktestResult }) {
             {data.periods} rebalanceos entre {data.first_date} y {data.last_date}. Le ganó al universo en el{" "}
             {fmtProb(data.beat_universe)} de los períodos y en {data.years_beat_universe} de {data.by_year.length} años.
             Rotación promedio por rebalanceo: {fmtProb(data.avg_turnover)}.
+            {data.time_in_market != null && data.time_in_market < 1 && ` Estuvo invertida el ${fmtProb(data.time_in_market)} del tiempo.`}
           </p>
         </CardContent>
       </Card>

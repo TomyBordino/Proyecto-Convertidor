@@ -499,6 +499,7 @@ export interface BacktestResult {
   beat_universe: number;
   avg_turnover: number | null;
   years_beat_universe: number;
+  time_in_market?: number;
   curves: { time: string; strategy: number; universe: number; benchmark: number }[];
   by_year: { year: number; strategy: number; universe: number; benchmark: number }[];
   picks: { ticker: string; name: string | null }[];

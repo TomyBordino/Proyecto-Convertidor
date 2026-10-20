@@ -14,6 +14,7 @@ from app.analytics.backtest import REBALANCE, Strategy, quintile_returns, run_ba
 from app.db.models import Holding, Instrument
 from app.db.session import get_session
 from app.services.analytics import load_panel
+from app.services.events import load_macro
 from app.services.portfolio import Fx, analyze
 from app.services.portfolio_import import import_file
 
@@ -105,6 +106,9 @@ def backtest(
     max_per_sector: int | None = Query(None, ge=1, le=50),
     cost_bps: float = Query(50, ge=0, le=500),
     buffer: float = Query(2.0, ge=1.0, le=5.0),
+    weighting: Literal["equal", "inv_vol"] = "equal",
+    regime: Literal["none", "spy_bear", "spy_weak"] = "none",
+    end_year: int | None = Query(None, ge=2000, le=2100),
     start_year: int | None = Query(None, ge=2000, le=2100),
 ) -> dict:
     if rebalance not in REBALANCE:
@@ -124,9 +128,14 @@ def backtest(
         max_per_sector=max_per_sector,
         cost_bps=cost_bps,
         buffer=buffer,
+        weighting=weighting,
+        regime=regime,
         start_year=start_year,
+        end_year=end_year,
     )
-    out = run_backtest(panel, meta, st)
+    ust3m = load_macro(session).get("UST3M")
+    cash = (ust3m / 100).sort_index() if ust3m is not None else None
+    out = run_backtest(panel, meta, st, cash)
     out["quintiles"] = quintile_returns(
         panel
         if not kind
