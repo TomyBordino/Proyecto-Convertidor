@@ -345,6 +345,11 @@ def diagnosis_columns(d: dict | None) -> dict:
         "base_rate_60": (preds.get("60") or {}).get("base_rate"),
         "score_pct": d.get("score_pct"),
         **{
+            f"range_{k}_{h}": ((d.get("ranges") or {}).get(h) or {}).get("returns", {}).get(q)
+            for h in ("20", "60", "120")
+            for k, q in (("low", "p10"), ("mid", "p50"), ("high", "p90"))
+        },
+        **{
             f"prob_outperform_{h}": (rel.get(h) or {}).get("probability")
             for h in ("20", "60", "120")
         },

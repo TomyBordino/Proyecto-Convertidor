@@ -42,6 +42,15 @@ class RankingItem(BaseModel):
     prob_outperform_20: float | None = None
     prob_outperform_60: float | None = None
     prob_outperform_120: float | None = None
+    range_low_20: float | None = None
+    range_mid_20: float | None = None
+    range_high_20: float | None = None
+    range_low_60: float | None = None
+    range_mid_60: float | None = None
+    range_high_60: float | None = None
+    range_low_120: float | None = None
+    range_mid_120: float | None = None
+    range_high_120: float | None = None
     news_score: float | None = None
     news_label: str | None = None
     events_favorable: int = 0

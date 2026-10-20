@@ -201,6 +201,8 @@ export function ModelView() {
         </>
       )}
 
+      <RangesValidation data={data} />
+
       <Card>
         <CardContent className="space-y-2 p-4 text-xs text-muted-foreground">
           <p>
@@ -253,5 +255,57 @@ function YearBars({ rows }: { rows: { year: number; auc: number; n: number }[] }
         );
       })}
     </div>
+  );
+}
+
+function RangesValidation({ data }: { data: ModelReport }) {
+  const rows = (["20", "60", "120"] as const).map((h) => [h, data.ranges?.[h]] as const).filter(([, r]) => r?.status === "ok");
+  if (!rows.length) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Rangos de precio: ¿dicen la verdad?</CardTitle>
+        <CardDescription>
+          Cada año se calcula el rango con datos de años anteriores y se cuenta cuántos precios reales cayeron adentro.
+          Un rango del 80% bien hecho tiene que contener cerca del 80%.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Horizonte</TableHead>
+              <TableHead className="text-right">Rango del 80% contuvo</TableHead>
+              <TableHead className="text-right">Rango del 50% contuvo</TableHead>
+              <TableHead className="text-right">Años con 70–90%</TableHead>
+              <TableHead className="text-right">Ejemplo (30% de vol.)</TableHead>
+              <TableHead>Centro</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="tabular">
+            {rows.map(([h, r]) => (
+              <TableRow key={h}>
+                <TableCell>{H_LABEL[h]}</TableCell>
+                <TableCell className="text-right font-medium">{fmtProb(r!.coverage_80, 1)}</TableCell>
+                <TableCell className="text-right">{fmtProb(r!.coverage_50, 1)}</TableCell>
+                <TableCell className="text-right">
+                  {r!.years_80_within_10pp} de {r!.by_year?.length ?? 0}
+                </TableCell>
+                <TableCell className="text-right text-muted-foreground">
+                  {r!.example_vol30 ? `${fmtReturn(r!.example_vol30[0])} a ${fmtReturn(r!.example_vol30[4])}` : "—"}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {r!.conditional ? "por decil de puntaje (mejoró la precisión)" : "universo (el puntaje no mejoró la precisión)"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <p className="p-4 pt-2 text-xs text-muted-foreground">
+          Los años que se salen del 70–90% son crisis (2008: las caídas superaron lo que la volatilidad previa anticipaba).
+          En un crash, el piso del rango se rompe más seguido de lo que dice.
+        </p>
+      </CardContent>
+    </Card>
   );
 }

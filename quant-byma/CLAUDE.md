@@ -16,6 +16,8 @@ aislada del sitio estático (ConvertiYa) que ocupa la raíz del repositorio.
     `model.py` (panel point-in-time, puntaje de factores tendencia+valuación con pesos fijos,
     calibración isotónica walk-forward, compuerta de habilidad, evidencia).
   - `app/services/diagnosis.py` — etapa + momento fundamental + probabilidades por activo.
+  - `app/analytics/ranges.py` — rango probable de precio (cuantiles de retorno en unidades de
+    volatilidad, por decil de puntaje solo si mejora la pinball), con cobertura validada walk-forward.
   - `app/analytics/events.py` + `app/services/events.py` — capa de eventos: reglas macro sobre series
     de mercado, estudio de eventos por sector, sensibilidades, noticias y presión por activo/sector.
   - `app/services/news_ai.py` — clasificación de titulares con Claude (SDK `anthropic`, salida con

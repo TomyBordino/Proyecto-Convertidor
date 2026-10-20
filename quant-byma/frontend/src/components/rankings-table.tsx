@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { RangeBar } from "@/components/price-range";
 import { ScoreBar } from "@/components/score-bar";
 import { SignalBadges } from "@/components/signal-badges";
 import { PressureBadge } from "@/components/events-shared";
@@ -12,7 +13,7 @@ import { ProbBar } from "@/components/prob-bar";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { RankingItem } from "@/lib/api";
-import { fmtCompact, fmtMoney, fmtNumber, fmtPct } from "@/lib/format";
+import { fmtCompact, fmtMoney, fmtNumber, fmtPct, fmtReturn } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type SortKey =
@@ -30,6 +31,7 @@ type SortKey =
   | "avg_volume_ars"
   | "score_pct"
   | "news_score"
+  | "range_mid_60"
   | "composite_score";
 
 interface Column {
@@ -49,6 +51,7 @@ const COLUMNS: Column[] = [
   { key: "prob_up_20", label: "P(suba) 1M", title: "Probabilidad calibrada de cotizar más alto en 20 ruedas" },
   { key: "prob_up_60", label: "P(suba) 3M", title: "Probabilidad calibrada de cotizar más alto en 60 ruedas (la línea marca la tasa base)" },
   { key: "prob_up_120", label: "P(suba) 6M", title: "Probabilidad calibrada de cotizar más alto en 120 ruedas" },
+  { key: "range_mid_60", label: "Rango 3M", title: "Rango probable de retorno en USD a 60 ruedas: piso (10%) y techo (90%); la marca es la mediana. Validado fuera de muestra" },
   { key: "news_score", label: "Contexto", title: "Noticias interpretadas por Claude y eventos macro vigentes con historia significativa para el sector (no alteran las probabilidades)" },
   { key: "pe", label: "P/E", align: "right" },
   { key: "ccl_dev_pct", label: "Desvío CCL", align: "right", title: "CCL implícito vs mercado" },
@@ -164,6 +167,9 @@ export function RankingsTable({ items }: { items: RankingItem[] }) {
               <ProbBar p={r.prob_up_120} />
             </TableCell>
             <TableCell>
+              <RangeCell r={r} />
+            </TableCell>
+            <TableCell>
               <ContextCell r={r} />
             </TableCell>
             <TableCell className="text-right">{fmtNumber(r.pe, 1)}</TableCell>
@@ -210,6 +216,22 @@ function ContextCell({ r }: { r: RankingItem }) {
         </span>
       )}
       {r.news_label === "Neutral" && !fav && !unfav && <span className="text-[11px] text-muted-foreground">Noticias neutras</span>}
+    </div>
+  );
+}
+
+function RangeCell({ r }: { r: RankingItem }) {
+  const lo = r.range_low_60;
+  const mid = r.range_mid_60;
+  const hi = r.range_high_60;
+  if (lo == null || mid == null || hi == null) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="w-28 space-y-0.5" title={`Piso ${fmtReturn(lo)} · mediana ${fmtReturn(mid)} · techo ${fmtReturn(hi)} (USD, 3 meses)`}>
+      <RangeBar r={{ p10: lo, p25: lo, p50: mid, p75: hi, p90: hi }} scale={0.45} />
+      <div className="flex justify-between text-[11px]">
+        <span className="text-negative">{fmtReturn(lo, 0)}</span>
+        <span className="text-positive">{fmtReturn(hi, 0)}</span>
+      </div>
     </div>
   );
 }

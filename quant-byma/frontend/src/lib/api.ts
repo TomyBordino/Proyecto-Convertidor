@@ -36,6 +36,9 @@ export interface RankingItem {
   prob_outperform_20: number | null;
   prob_outperform_60: number | null;
   prob_outperform_120: number | null;
+  range_low_60?: number | null;
+  range_mid_60?: number | null;
+  range_high_60?: number | null;
   news_score: number | null;
   news_label: NewsLabel | null;
   events_favorable: number;
@@ -73,6 +76,31 @@ export interface Prediction {
   };
   drivers_up: Driver[];
   drivers_down: Driver[];
+}
+
+export interface PriceRange {
+  horizon: number;
+  returns: { p10: number; p25: number; p50: number; p75: number; p90: number };
+  vol: number;
+  decile: number | null;
+  conditional: boolean;
+  coverage_80: number | null;
+  coverage_50: number | null;
+}
+
+export interface RangeReport {
+  horizon: number;
+  status: string;
+  conditional?: boolean;
+  coverage_80?: number;
+  coverage_50?: number;
+  below_80?: number;
+  oos_samples?: number;
+  pinball_universe?: number;
+  pinball_decile?: number;
+  years_80_within_10pp?: number;
+  by_year?: { year: number; cov80: number; n: number }[];
+  example_vol30?: number[];
 }
 
 export interface StageStat {
@@ -113,6 +141,7 @@ export interface Diagnosis {
   fundamentals: FundamentalState | null;
   predictions: Record<string, Prediction>;
   relative: Record<string, Prediction>;
+  ranges?: Record<string, PriceRange>;
   score: number | null;
   score_pct: number | null;
   bias: Bias;
@@ -151,6 +180,7 @@ export interface ModelReport {
   last_date: string;
   horizons: Record<string, HorizonReport>;
   relative: Record<string, HorizonReport>;
+  ranges?: Record<string, RangeReport>;
   stage_stats: Record<string, StageStat[]>;
   features: Record<string, string>;
   stages: Record<string, { name: string; description: string }>;

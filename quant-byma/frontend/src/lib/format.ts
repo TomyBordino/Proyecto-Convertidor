@@ -34,7 +34,7 @@ export function scoreTone(score: number | null | undefined): string {
 }
 
 export function fmtProb(v: number | null | undefined, digits = 0): string {
-  return v === null || v === undefined || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(digits)}%`;
+  return v === null || v === undefined || !Number.isFinite(v) ? "—" : `${nf(digits).format(v * 100)}%`;
 }
 
 export function fmtReturn(v: number | null | undefined, digits = 1): string {

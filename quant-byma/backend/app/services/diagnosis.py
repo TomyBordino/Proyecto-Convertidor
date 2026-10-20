@@ -17,6 +17,7 @@ from app.analytics.model import (
     stage_statistics,
     train_horizon,
 )
+from app.analytics.ranges import fit_ranges, predict_ranges
 from app.analytics.regime import STAGES, current_regime
 
 log = logging.getLogger(__name__)
@@ -145,6 +146,13 @@ def summary(ticker: str, d: dict) -> str:
                 f"veces (IC95 {sim['ci_low']:.0%}–{sim['ci_high']:.0%}, "
                 f"n efectivo {sim['n_effective']})."
             )
+    rng = d.get("ranges", {}).get(str(PRIMARY_HORIZON))
+    if rng:
+        r = rng["returns"]
+        parts.append(
+            f"Rango probable a {PRIMARY_HORIZON} ruedas (80% de confianza): "
+            f"{r['p10']:+.0%} a {r['p90']:+.0%} en USD, con mediana {r['p50']:+.0%}."
+        )
     return " ".join(p for p in parts if p)
 
 
@@ -166,7 +174,9 @@ def diagnose(assets: list[AssetInput], sectors: dict[str, str]) -> tuple[dict[st
     latest = panel.sort_values("date").groupby("ticker").tail(1)
     preds: dict[int, list] = {}
     rel_preds: dict[int, list] = {}
+    range_preds: dict[int, list] = {}
     report["relative"] = {}
+    report["ranges"] = {}
     for h in HORIZONS:
         hm = train_horizon(panel, h)
         report["horizons"][str(h)] = hm.report
@@ -175,6 +185,9 @@ def diagnose(assets: list[AssetInput], sectors: dict[str, str]) -> tuple[dict[st
         rel = train_horizon(panel, h, target_kind="rel")
         report["relative"][str(h)] = rel.report
         rel_preds[h] = predict(rel, latest)
+        rm = fit_ranges(panel, h, hm.has_skill)
+        report["ranges"][str(h)] = rm.report
+        range_preds[h] = predict_ranges(rm, latest)
         log.info(
             "Modelo %d ruedas: %s",
             h,
@@ -216,6 +229,7 @@ def diagnose(assets: list[AssetInput], sectors: dict[str, str]) -> tuple[dict[st
             "fundamentals": fund.get(t),
             "predictions": {str(h): preds[h][i] for h in HORIZONS if preds[h][i]},
             "relative": {str(h): rel_preds[h][i] for h in HORIZONS if rel_preds[h][i]},
+            "ranges": {str(h): range_preds[h][i] for h in HORIZONS if range_preds[h][i]},
             "score": _r(row.get("score")),
             "score_pct": score_pct.get(t),
         }

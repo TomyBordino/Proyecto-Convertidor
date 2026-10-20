@@ -97,6 +97,22 @@ años, el objetivo absoluto dio AUC < 0,5). La ventaja es moderada y está sobre
 activos peor puntuados. Los múltiplos históricos usan acciones ajustadas por splits: sin ese ajuste
 las empresas que luego hicieron splits parecían baratas en el pasado (información del futuro).
 
+## Rango probable de precio
+
+Para cada activo y horizonte (1, 3 y 6 meses) se muestra un piso (percentil 10), una mediana y un techo
+(percentil 90) en USD y en pesos a CCL constante (`app/analytics/ranges.py`). No es un precio objetivo:
+el retorno se mide en unidades de la volatilidad propia del activo (`vol_60`) y se toman los cuantiles
+históricos de su decil de puntaje (solo si eso mejora la pérdida pinball fuera de muestra frente a los
+cuantiles del universo). Validación walk-forward con embargo, 2006–2026:
+
+| Horizonte | El rango del 80% contuvo | El rango del 50% contuvo | Años entre 70% y 90% |
+|---|---|---|---|
+| 20 ruedas | 79,4% | 49,7% | 21 de 21 |
+| 60 ruedas | 79,0% | 49,3% | 19 de 21 |
+| 120 ruedas | 78,9% | 49,0% | 18 de 21 |
+
+Los años fuera de rango son crisis: en 2008 el piso a 6 meses se rompió en la mitad de los casos.
+
 ## Eventos y noticias (capa de contexto)
 
 Página **Eventos**, tarjeta "Eventos y noticias" en cada activo y columna *Contexto* en el ranking.

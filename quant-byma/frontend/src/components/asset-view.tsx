@@ -9,6 +9,7 @@ import { AssetEventsPanel } from "@/components/asset-events";
 import { DiagnosisPanel } from "@/components/diagnosis-panel";
 import { FlowsChart, MultiplesChart } from "@/components/fundamentals-chart";
 import { LineChart, PriceChart, type Overlays } from "@/components/price-chart";
+import { PriceRangeCard } from "@/components/price-range";
 import { ScoreBar } from "@/components/score-bar";
 import { ScoreBreakdown } from "@/components/score-breakdown";
 import { SignalBadges } from "@/components/signal-badges";
@@ -79,6 +80,10 @@ export function AssetView({ ticker }: { ticker: string }) {
       </div>
 
       {d.breakdown.diagnosis && <DiagnosisPanel d={d.breakdown.diagnosis} />}
+
+      {d.breakdown.diagnosis?.ranges && (
+        <PriceRangeCard ranges={d.breakdown.diagnosis.ranges} priceArs={m.price_ars} priceUsd={m.price_usd} />
+      )}
 
       <AssetEventsPanel ticker={d.ticker} />
 
