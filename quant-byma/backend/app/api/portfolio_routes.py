@@ -10,7 +10,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.analytics.backtest import REBALANCE, Strategy, quintile_returns, run_backtest
+from app.analytics.backtest import (
+    REBALANCE,
+    Strategy,
+    current_plan,
+    quintile_returns,
+    run_backtest,
+)
 from app.db.models import Holding, Instrument
 from app.db.session import get_session
 from app.services.analytics import load_panel
@@ -143,5 +149,23 @@ def backtest(
         rebalance,
     )
     names = {i.ticker: i.name for i in session.scalars(select(Instrument))}
+    plan = current_plan(panel, meta, st)
+    held = {h.ticker: h.quantity for h in session.scalars(select(Holding))}
+    weights = plan["weights"]
+    keep = [t for t in held if t in plan["keep_zone"] and t not in weights]
+    out["plan"] = {
+        **plan,
+        "picks": [
+            {"ticker": t, "name": names.get(t), "weight": w, "held": t in held}
+            for t, w in weights.items()
+        ],
+        "keep": [{"ticker": t, "name": names.get(t)} for t in keep],
+        "sell": [
+            {"ticker": t, "name": names.get(t)}
+            for t in held
+            if t in meta and t not in weights and t not in keep
+        ],
+        "has_portfolio": bool(held),
+    }
     out["picks"] = [{"ticker": t, "name": names.get(t)} for t in out.get("picks", [])]
     return out

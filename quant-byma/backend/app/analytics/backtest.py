@@ -68,11 +68,53 @@ def _annualize(r: pd.Series, per_year: float) -> dict:
     }
 
 
-def _select(day: pd.DataFrame, s: Strategy, key: str, held: set[str] | None = None) -> list[str]:
+def _ranked(day: pd.DataFrame, s: Strategy, key: str) -> list[str]:
     d = day.dropna(subset=[key]).sort_values(key, ascending=False)
     if s.max_per_sector:
         d = d[d.groupby("sector").cumcount() < s.max_per_sector]
-    ranked = list(d["ticker"])
+    return list(d["ticker"])
+
+
+def _weights(day: pd.DataFrame, picks: list[str], s: Strategy) -> dict[str, float]:
+    if not picks:
+        return {}
+    if s.weighting == "inv_vol" and "vol_60" in day.columns:
+        inv = 1 / day.set_index("ticker").loc[picks, "vol_60"].clip(lower=0.1).fillna(0.3)
+        return {t: round(float(v), 4) for t, v in (inv / inv.sum()).items()}
+    return {t: round(1 / len(picks), 4) for t in picks}
+
+
+def current_plan(panel: pd.DataFrame, meta: dict[str, dict], s: Strategy) -> dict:
+    """Qué indica la estrategia hoy: selección con pesos, zona de permanencia (los primeros
+    buffer × N, que pueden conservarse si ya están en cartera) y si el filtro de mercado
+    está activo."""
+    key = SORT_KEYS[s.sort]
+    last = panel["date"].max()
+    day = panel[panel["date"] == last].copy()
+    day["kind"] = day["ticker"].map(lambda t: meta.get(t, {}).get("kind"))
+    day["sector"] = day["ticker"].map(lambda t: meta.get(t, {}).get("sector") or "Sin clasificar")
+    spy = day.loc[day["ticker"] == s.benchmark, "stage"]
+    off = {"spy_bear": {4}, "spy_weak": {3, 4}}.get(s.regime, set())
+    out = bool(off) and not spy.empty and spy.iloc[0] in off
+    if s.kind:
+        day = day[day["kind"] == s.kind]
+    if s.stages:
+        day = day[day["stage"].isin(s.stages)]
+    if s.sectors:
+        day = day[day["sector"].isin(s.sectors)]
+    ranked = _ranked(day, s, key)
+    picks = ranked[: s.top_n]
+    return {
+        "as_of": str(pd.Timestamp(last).date()),
+        "out_of_market": out,
+        "benchmark_stage": int(spy.iloc[0]) if not spy.empty and pd.notna(spy.iloc[0]) else None,
+        "weights": {} if out else _weights(day, picks, s),
+        "keep_zone": ranked[: int(round(s.top_n * max(1.0, s.buffer)))],
+    }
+
+
+def _select(day: pd.DataFrame, s: Strategy, key: str, held: set[str] | None = None) -> list[str]:
+    ranked = _ranked(day, s, key)
     if not held or s.buffer <= 1:
         return ranked[: s.top_n]
     keep = [t for t in ranked[: int(round(s.top_n * s.buffer))] if t in held][: s.top_n]
@@ -153,7 +195,7 @@ def run_backtest(
         turnover = 1.0 if not prev else len(held - prev) / len(held)
         cost = 2 * turnover * s.cost_bps / 10_000
         if s.weighting == "inv_vol" and "vol_60" in day.columns:
-            vol = day.set_index("ticker").loc[picks, "vol_60"].clip(lower=0.1)
+            vol = day.set_index("ticker").loc[picks, "vol_60"].clip(lower=0.1).fillna(0.3)
             w = (1 / vol).where(fwd.notna())
             gross = float((fwd.fillna(0) * w).sum() / w.sum()) if w.sum() > 0 else 0.0
         else:

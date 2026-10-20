@@ -29,7 +29,18 @@ export function BacktestView() {
   const [weighting, setWeighting] = useState("equal");
   const [regime, setRegime] = useState("none");
 
-  function preset(p: "robusta" | "proteccion" | "base") {
+  const active: Preset | null =
+    topN === 30 && sort === "trend" && stages === "1,2,3" && weighting === "inv_vol" && !cap
+      ? regime === "spy_bear"
+        ? "proteccion"
+        : regime === "none"
+          ? "robusta"
+          : null
+      : topN === 20 && sort === "score" && !stages && weighting === "equal" && regime === "none" && !cap
+        ? "base"
+        : null;
+
+  function preset(p: Preset) {
     setTopN(p === "base" ? 20 : 30);
     setSort(p === "base" ? "score" : "trend");
     setStages(p === "base" ? "" : "1,2,3");
@@ -62,17 +73,20 @@ export function BacktestView() {
       <Card>
         <CardContent className="flex flex-wrap items-center gap-2 p-4 text-sm">
           <span className="text-xs text-muted-foreground">Estrategias validadas:</span>
-          <Button size="sm" variant="outline" onClick={() => preset("robusta")} title="30 papeles, tendencia, sin etapa bajista, ponderados por volatilidad">
+          <Button size="sm" variant={active === "robusta" ? "secondary" : "outline"} onClick={() => preset("robusta")} title="30 papeles, tendencia, sin etapa bajista, ponderados por volatilidad">
             Robusta
           </Button>
-          <Button size="sm" variant="outline" onClick={() => preset("proteccion")} title="Robusta + liquidez cuando el SPY está en etapa bajista">
+          <Button size="sm" variant={active === "proteccion" ? "secondary" : "outline"} onClick={() => preset("proteccion")} title="Robusta + liquidez cuando el SPY está en etapa bajista">
             Robusta con protección
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => preset("base")}>
-            Volver a la básica
+          <Button size="sm" variant={active === "base" ? "secondary" : "ghost"} onClick={() => preset("base")}>
+            Básica
           </Button>
+          <span className="text-xs text-muted-foreground">{active ? "" : "· configuración personalizada"}</span>
         </CardContent>
       </Card>
+
+      <StrategyGuide active={active} rebalance={rebalance} />
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 p-4 text-sm">
@@ -102,6 +116,7 @@ export function BacktestView() {
           <Field label="Etapas">
             <Select value={stages} onChange={(e) => setStages(e.target.value)}>
               <option value="">Todas</option>
+              <option value="1,2,3">Sin etapa bajista (1, 2, 3)</option>
               <option value="2">Solo alcista (2)</option>
               <option value="1,2">Base o alcista (1, 2)</option>
               <option value="1">Solo base (1)</option>
@@ -176,7 +191,7 @@ export function BacktestView() {
       ) : data.status !== "ok" ? (
         <p className="text-sm text-muted-foreground">Sin resultados: {data.status}</p>
       ) : (
-        <Results data={data} />
+        <Results data={data} rebalance={rebalance} buffer={buffer} />
       )}
 
       <Card>
@@ -198,6 +213,182 @@ export function BacktestView() {
           </p>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+type Preset = "robusta" | "proteccion" | "base";
+
+const PRESETS: Record<Preset, { title: string; what: string; when: string; result: string }> = {
+  robusta: {
+    title: "Robusta",
+    what:
+      "Compra los 30 papeles con mejor tendencia (pendiente de la media de 200 ruedas, momentum de 12 meses, distancia a la media y cercanía al máximo), descarta los que están en etapa bajista y les da más peso a los menos volátiles.",
+    when: "Para quien quiere la estrategia que mejoró en los dos períodos de prueba, sin intentar adivinar el mercado.",
+    result: "2004–2015: 12,7% anual · 2016–2026: 24,2% anual · le ganó al universo en 14 de 23 años.",
+  },
+  proteccion: {
+    title: "Robusta con protección",
+    what:
+      "Igual que la Robusta, pero cuando el SPY entra en etapa bajista vende todo y espera en liquidez (rinde la tasa a 3 meses) hasta que el SPY salga de esa etapa.",
+    when: "Para quien prioriza evitar las caídas grandes, aunque eso cueste algo de retorno en los rebotes rápidos.",
+    result: "Peor caída −33% contra −58% del universo · 16,0% anual en toda la historia · en 2020 y 2022 salió tarde.",
+  },
+  base: {
+    title: "Básica",
+    what: "Compra los 20 papeles con mejor puntaje del modelo (tendencia + valuación y calidad), con igual peso.",
+    when: "Como referencia: es la que sigue directamente el ranking de la plataforma.",
+    result: "Con colchón ×2, quedó empatada con el universo neto de costos (15,5% vs 15,3% anual).",
+  },
+};
+
+function StrategyGuide({ active, rebalance }: { active: Preset | null; rebalance: number }) {
+  const [open, setOpen] = useState(true);
+  const every = rebalance === 20 ? "cada mes" : rebalance === 60 ? "cada 3 meses" : "cada 6 meses";
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <div>
+          <CardTitle>Las estrategias y cómo usarlas</CardTitle>
+          <CardDescription>Qué hace cada una y los pasos para llevarla a tu cuenta.</CardDescription>
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)}>
+          {open ? "Ocultar" : "Mostrar"}
+        </Button>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-5 text-sm">
+          <div className="grid gap-3 lg:grid-cols-3">
+            {(Object.keys(PRESETS) as Preset[]).map((k) => (
+              <div key={k} className={cn("space-y-1.5 rounded-md border p-3", active === k && "border-primary bg-primary/5")}>
+                <p className="font-medium">
+                  {PRESETS[k].title}
+                  {active === k && <span className="ml-2 text-xs font-normal text-primary">(seleccionada)</span>}
+                </p>
+                <p className="text-xs">{PRESETS[k].what}</p>
+                <p className="text-xs text-muted-foreground">
+                  <b>Para quién:</b> {PRESETS[k].when}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <b>Historia:</b> {PRESETS[k].result}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            <p className="font-medium">Pasos para seguirla</p>
+            <ol className="list-decimal space-y-1.5 pl-5 text-xs">
+              <li>
+                <b>Elegí la estrategia</b> con los botones de arriba y revisá sus resultados en los dos períodos (“2004–2015” y
+                “2016–hoy” en <i>Período</i>). Si solo le va bien en uno, desconfiá.
+              </li>
+              <li>
+                <b>Definí cuánto capital destinás</b> y no lo cambies según cómo vaya el mes: la estrategia se evalúa en años, no en
+                semanas.
+              </li>
+              <li>
+                <b>Rebalanceá {every}</b>, siempre el mismo día (por ejemplo, el primer día hábil), con los datos actualizados
+                (botón “Actualizar datos” del Ranking o la actualización automática de las 18:15).
+              </li>
+              <li>
+                <b>Mirá el panel “Qué hacer hoy”</b> (más abajo). Si el filtro de mercado está activo y dice “liquidez”, vendé todo y
+                dejá el dinero en un instrumento de corto plazo en dólares (caución o fondo money market) hasta el próximo rebalanceo.
+              </li>
+              <li>
+                <b>Vendé</b> los papeles que tengas y aparezcan en “Vender”: ya no están entre los primeros de la estrategia (ni siquiera
+                en la zona de permanencia).
+              </li>
+              <li>
+                <b>Mantené</b> los de “Mantener”: siguen dentro de la zona de permanencia, aunque ya no estén en el top. Venderlos solo
+                generaría comisiones.
+              </li>
+              <li>
+                <b>Comprá</b> los de “Comprar” hasta completar la cantidad de papeles, con el monto de cada uno = capital × peso. En
+                CEDEARs, revisá el desvío de CCL en el Ranking: evitá comprar un CEDEAR con el dólar implícito muy caro.
+              </li>
+              <li>
+                <b>Registrá las operaciones</b> en Mi cartera (importando el Excel de movimientos de Balanz) para que el próximo mes el
+                panel compare contra lo que realmente tenés.
+              </li>
+              <li>
+                <b>Aguantá los años malos.</b> Todas las estrategias tuvieron años de −10% a −40% y años por debajo del índice; abandonar
+                después de uno malo es la forma más común de perder la ventaja.
+              </li>
+            </ol>
+            <p className="text-xs text-muted-foreground">
+              Los resultados históricos no garantizan los futuros, no incluyen impuestos y suponen el costo por operación elegido. No es
+              una recomendación de inversión.
+            </p>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+function TodayPlan({ data, rebalance, buffer }: { data: BacktestResult; rebalance: number; buffer: number }) {
+  const plan = data.plan;
+  if (!plan) return null;
+  const buys = plan.picks.filter((p) => !p.held);
+  const holdTop = plan.picks.filter((p) => p.held);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Qué hacer hoy</CardTitle>
+        <CardDescription>
+          Con datos al {plan.as_of}. Rebalanceo {rebalance === 20 ? "mensual" : rebalance === 60 ? "trimestral" : "semestral"} · zona de
+          permanencia: primeros {plan.keep_zone.length}
+          {buffer > 1 ? ` (colchón ×${String(buffer).replace(".", ",")})` : ""}.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 text-xs">
+        {plan.out_of_market ? (
+          <p className="rounded-md border border-warning/40 bg-warning/10 p-3">
+            <b className="text-warning">Filtro de mercado activo:</b> el SPY está en etapa {plan.benchmark_stage}. La estrategia indica
+            estar en liquidez hasta el próximo rebalanceo.
+          </p>
+        ) : (
+          <>
+            {!plan.has_portfolio && (
+              <p className="text-muted-foreground">
+                Cargá tu cartera en <a className="underline" href="/cartera">Mi cartera</a> para ver qué vender y qué mantener.
+              </p>
+            )}
+            <PlanList title={plan.has_portfolio ? "Comprar" : "Cartera objetivo"} tone="pos" items={buys.map((p) => ({ ...p, w: p.weight }))} />
+            {holdTop.length > 0 && <PlanList title="Mantener (siguen en el top)" items={holdTop.map((p) => ({ ...p, w: p.weight }))} />}
+            {plan.keep.length > 0 && <PlanList title="Mantener (zona de permanencia)" items={plan.keep} />}
+            {plan.sell.length > 0 && <PlanList title="Vender" tone="neg" items={plan.sell} />}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PlanList({
+  title,
+  items,
+  tone,
+}: {
+  title: string;
+  items: { ticker: string; name: string | null; w?: number }[];
+  tone?: "pos" | "neg";
+}) {
+  if (!items.length) return null;
+  return (
+    <div className="space-y-1">
+      <p className={cn("font-medium", tone === "pos" && "text-positive", tone === "neg" && "text-negative")}>
+        {title} ({items.length})
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((p) => (
+          <a key={p.ticker} href={`/asset/${p.ticker}`} title={p.name ?? ""} className="rounded-md border px-2 py-1 font-medium hover:border-primary">
+            {p.ticker}
+            {p.w != null && <span className="ml-1 font-normal text-muted-foreground">{fmtProb(p.w, 1)}</span>}
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -254,7 +445,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Results({ data }: { data: BacktestResult }) {
+function Results({ data, rebalance, buffer }: { data: BacktestResult; rebalance: number; buffer: number }) {
   const m = data.metrics;
   const curves = data.curves.map((c) => ({ ...c, strategy: c.strategy * 100, universe: c.universe * 100, benchmark: c.benchmark * 100 }));
   const verdict =
@@ -324,19 +515,7 @@ function Results({ data }: { data: BacktestResult }) {
             </ResponsiveContainer>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Si hoy siguieras esta estrategia</CardTitle>
-            <CardDescription>Selección del último rebalanceo.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-1.5">
-            {data.picks.map((p) => (
-              <a key={p.ticker} href={`/asset/${p.ticker}`} title={p.name ?? ""} className="rounded-md border px-2 py-1 text-xs font-medium hover:border-primary">
-                {p.ticker}
-              </a>
-            ))}
-          </CardContent>
-        </Card>
+        <TodayPlan data={data} rebalance={rebalance} buffer={buffer} />
       </div>
 
       <Card>

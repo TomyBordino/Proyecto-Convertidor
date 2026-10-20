@@ -503,6 +503,16 @@ export interface BacktestResult {
   curves: { time: string; strategy: number; universe: number; benchmark: number }[];
   by_year: { year: number; strategy: number; universe: number; benchmark: number }[];
   picks: { ticker: string; name: string | null }[];
+  plan?: {
+    as_of: string;
+    out_of_market: boolean;
+    benchmark_stage: number | null;
+    picks: { ticker: string; name: string | null; weight: number; held: boolean }[];
+    keep: { ticker: string; name: string | null }[];
+    sell: { ticker: string; name: string | null }[];
+    keep_zone: string[];
+    has_portfolio: boolean;
+  };
   quintiles: { quintile: number; cagr: number | null; hit_rate: number; periods: number }[];
 }
 

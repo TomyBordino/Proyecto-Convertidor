@@ -196,4 +196,8 @@ def test_backtest_endpoint(seeded_client):
     assert r.status_code == 200, r.text
     body = r.json()
     assert "quintiles" in body and "NaN" not in r.text
+    plan = body["plan"]
+    assert len(plan["picks"]) <= 3 and len(plan["keep_zone"]) >= len(plan["picks"])
+    if plan["picks"]:
+        assert sum(p["weight"] for p in plan["picks"]) == pytest.approx(1.0, abs=0.01)
     assert seeded_client.get("/api/backtest", params={"rebalance": 7}).status_code == 422
