@@ -5,10 +5,11 @@ import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContai
 import useSWR from "swr";
 
 import { ErrorState, LoadingState } from "@/components/state";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fetcher, type BacktestResult, type PerfMetrics } from "@/lib/api";
+import { api, ApiError, fetcher, type BacktestResult, type PerfMetrics } from "@/lib/api";
 import { fmtNumber, fmtProb, fmtReturn } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +32,7 @@ export function BacktestView() {
   if (kind) qs.set("kind", kind);
   if (cap) qs.set("max_per_sector", cap);
   if (startYear) qs.set("start_year", startYear);
-  const { data, error, isLoading } = useSWR<BacktestResult>(`/api/backtest?${qs}`, fetcher, { keepPreviousData: true });
+  const { data, error, isLoading, mutate } = useSWR<BacktestResult>(`/api/backtest?${qs}`, fetcher, { keepPreviousData: true });
 
   return (
     <div className="space-y-6">
@@ -125,7 +126,9 @@ export function BacktestView() {
         </CardContent>
       </Card>
 
-      {error ? (
+      {error instanceof ApiError && error.status === 404 ? (
+        <MissingPanel onDone={() => mutate()} />
+      ) : error ? (
         <ErrorState error={error} />
       ) : !data ? (
         <LoadingState />
@@ -155,6 +158,49 @@ export function BacktestView() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function MissingPanel({ onDone }: { onDone: () => void }) {
+  const [state, setState] = useState<"idle" | "running" | "error">("idle");
+  const [msg, setMsg] = useState("");
+  async function run() {
+    setState("running");
+    try {
+      await api.ingest();
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 10_000));
+        const st = await api.ingestStatus();
+        if (!st.running) {
+          if (st.error) {
+            setMsg(st.error);
+            setState("error");
+            return;
+          }
+          break;
+        }
+      }
+      setState("idle");
+      onDone();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+      setState("error");
+    }
+  }
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4 text-sm">
+        <p className="font-medium">Falta la historia del modelo para correr el backtest</p>
+        <p className="text-muted-foreground">
+          Se genera al final de cada actualización de datos. La primera vez con esta versión tarda 20–30 minutos (baja
+          dividendos, balances trimestrales y series argentinas); podés seguir usando la plataforma mientras tanto.
+        </p>
+        <Button size="sm" onClick={run} disabled={state === "running"}>
+          {state === "running" ? "Actualizando… (no cierres esta pestaña)" : "Actualizar datos ahora"}
+        </Button>
+        {state === "error" && <p className="text-xs text-negative">La actualización falló: {msg}</p>}
+      </CardContent>
+    </Card>
   );
 }
 
