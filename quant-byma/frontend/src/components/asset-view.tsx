@@ -250,8 +250,8 @@ function FundamentalsTable({ data }: { data: FundamentalsResponse }) {
         <TableRow className="hover:bg-transparent">
           <TableHead>Ratio</TableHead>
           {data.periods.map((p) => (
-            <TableHead key={p.period_end} className="text-right">
-              {p.period_end.slice(0, 4)}
+            <TableHead key={p.period_end} className="text-right" title={p.period_type === "TTM" ? `Últimos 12 meses al ${p.period_end}` : `Ejercicio cerrado el ${p.period_end}`}>
+              {p.period_type === "TTM" ? `12M ${p.period_end.slice(5, 7)}/${p.period_end.slice(2, 4)}` : p.period_end.slice(0, 4)}
             </TableHead>
           ))}
         </TableRow>

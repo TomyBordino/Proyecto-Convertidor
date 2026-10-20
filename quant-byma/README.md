@@ -73,15 +73,29 @@ Cada activo recibe:
 La página **Modelo** del dashboard muestra AUC, Brier skill score, calibración por decil, quintiles y
 desempeño histórico por etapa.
 
-### Validación del modelo (datos reales, 2004–2026, 414 activos)
+### Validación del modelo (datos reales, 2004–2026, 419 activos)
 
-Métricas fuera de muestra (walk-forward por año, con embargo):
+Métricas fuera de muestra (walk-forward por año, con embargo), con retorno total (dividendos
+reinvertidos) y el factor de calidad:
 
-| Horizonte | Tasa base | AUC | Brier skill | Años con AUC > 0,5 | Decil 1 vs deciles 5–8 |
-| --- | --- | --- | --- | --- | --- |
-| 20 ruedas | 54,8% | 0,519 | +0,0013 | 16/21 | 49% vs ~56–57% |
-| 60 ruedas | 57,6% | 0,526 | +0,0027 | 15/21 | 49% vs ~60% |
-| 120 ruedas | 60,0% | 0,539 | +0,0050 | 16/21 | 49% vs ~62–64% |
+| Horizonte | Tasa base | AUC | Brier skill |
+| --- | --- | --- | --- |
+| 20 ruedas | 55,5% | 0,521 | +0,0018 |
+| 60 ruedas | 59,1% | 0,528 | +0,0033 |
+| 120 ruedas | 62,1% | 0,543 | +0,0066 |
+
+**Qué se probó en la última revisión** (misma validación; entra solo lo que mejora AUC y Brier):
+
+| Cambio | 60 ruedas (AUC / Brier skill) | 120 ruedas | Decisión |
+| --- | --- | --- | --- |
+| Calendario semanal común en el panel (antes, la mediana de activos por fecha era 7, no ~300) | 0,5244 / 0,0024 | 0,5381 / 0,0049 | corrección de error |
+| + Retorno total con dividendos | 0,5264 / 0,0031 | 0,5407 / 0,0062 | entra |
+| + Balances trimestrales (TTM) en el modelo | 0,5256 / 0,0029 | 0,5395 / 0,0060 | no entra (se usan para mostrar ratios actuales) |
+| + Calidad (ROE) en el bloque de valuación | 0,5279 / 0,0033 | 0,5430 / 0,0066 | entra |
+| + Crecimiento / bajo endeudamiento | ≈ igual | ≈ igual | no entra |
+| + Baja volatilidad | 0,5334 / 0,0031 | 0,5474 / 0,0061 | no entra (Brier no mejora; empeora el relativo) |
+| + Reversión de 1 mes | 0,5247 / 0,0032 | 0,5375 / 0,0054 | no entra |
+| Rangos condicionados al VIX | pinball peor en 20/60/120 | — | no entra |
 
 **Superar al universo** (rendir más que la mediana en el mismo período): con la misma validación
 dio AUC 0,510 / 0,514 / 0,524 y Brier skill ≤ 0,0003, por debajo del mínimo de 0,0005 exigido, así
@@ -112,6 +126,44 @@ cuantiles del universo). Validación walk-forward con embargo, 2006–2026:
 | 120 ruedas | 78,9% | 49,0% | 18 de 21 |
 
 Los años fuera de rango son crisis: en 2008 el piso a 6 meses se rompió en la mitad de los casos.
+
+## Backtest
+
+Página **Backtest** (`app/analytics/backtest.py`): en cada rebalanceo (mensual, trimestral o semestral)
+se compran con igual peso los N mejores según el puntaje, la tendencia o la valuación, con filtros de
+etapa, tipo y máximo por sector, y se mantienen hasta el siguiente. Retornos en USD con dividendos, con
+costos por rotación y un colchón de permanencia (un activo en cartera sigue mientras esté dentro de los
+primeros colchón × N). Compara contra el promedio del universo y el SPY, año por año, y muestra el
+retorno de cada quintil del puntaje.
+
+Resultados con datos reales (2004–2026, mensual, 20 activos, 0,5% de costo por operación):
+
+| Estrategia | Retorno anual neto | Universo | Peor caída | Años que le ganó al universo |
+| --- | --- | --- | --- | --- |
+| Puntaje, sin colchón | 13,0% (18,0% antes de costos) | 15,3% | −49% (universo −58%) | 10 de 23 |
+| Puntaje, colchón ×2 | 15,5% | 15,3% | −50% | 11 de 23 |
+| Solo tendencia, colchón ×2 | 18,4% | 15,3% | −51% | 15 de 23 |
+
+La ventaja bruta del puntaje existe (el quintil superior rinde 18% anual vs ~15% del resto) pero la
+rotación se la come; el colchón la recupera. Hay sesgo de supervivencia (el universo son los activos
+que cotizan hoy), por eso la comparación válida es contra el universo y no el número absoluto.
+
+## Mi cartera
+
+Página **Mi cartera** (`app/services/portfolio.py`, `portfolio_import.py`): tenencias cargadas a mano o
+importadas desde el Excel de **Movimientos de Balanz** (reconstruye cantidades, costo promedio ponderado
+en dólares MEP y dividendos cobrados; el cable se convierte con el canje del día) o un CSV simple.
+Muestra valor y resultado en USD MEP, diagnóstico y rango de cada papel, volatilidad de la cartera con
+correlaciones de 3 años y su rango probable, concentración por sector y exposición a los eventos macro.
+
+## Datos agregados
+
+- **Dividendos** (Yahoo, fecha ex) → serie de retorno total para el modelo y el backtest.
+- **Balances trimestrales** de la SEC (10-Q): últimos 12 meses (TTM) a cada cierre trimestral, con
+  10-Q presentados ~50 días después del cierre. Se muestran como "12M mm/aa" en la tabla de balances
+  y alimentan los ratios actuales (P/E, ROE…).
+- **Contexto argentino** (argentinadatos + Yahoo): Merval en dólares, riesgo país, inflación mensual,
+  dólar MEP, brecha CCL/oficial y canje, en la página Eventos; reglas de riesgo país ±150 pb en 20 ruedas.
 
 ## Eventos y noticias (capa de contexto)
 

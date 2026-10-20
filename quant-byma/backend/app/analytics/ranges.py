@@ -133,6 +133,9 @@ def fit_ranges(panel: pd.DataFrame, horizon: int, allow_conditional: bool) -> Ra
             "years_80_within_10pp": sum(1 for r in by_year if abs(r["cov80"] - 0.8) <= 0.1),
             # Rango de referencia para una acción con 30% de volatilidad anual (decil medio).
             "example_vol30": [round(math.expm1(float(zq) * sigma30), 4) for zq in mid],
+            # Cuantiles de z de todo el universo (para escalar con otra volatilidad, p. ej. la
+            # de una cartera).
+            "z_universe": [round(float(z), 4) for z in _fit(data, False)[1][0]],
         }
     )
     return RangeModel(horizon, report, conditional, edges, table)

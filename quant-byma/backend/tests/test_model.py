@@ -143,3 +143,19 @@ def test_relative_target_and_stable_calibration():
     assert 0.45 < rel.report["base_rate"] < 0.55
     probs = [p["probability"] for p in predict(rel, panel.sort_values("date").tail(50))]
     assert all(0.05 < p < 0.95 for p in probs)  # sin extremos absurdos por pocos casos
+
+
+def test_panel_dates_are_shared_across_assets_with_gaps():
+    """Con ruedas faltantes distintas por activo, todos comparten las fechas semanales: los
+    percentiles se calculan contra el universo completo de cada fecha."""
+    rng = np.random.default_rng(3)
+    assets = []
+    for i in range(6):
+        idx = pd.bdate_range("2019-01-01", periods=900)
+        keep = rng.random(len(idx)) > 0.03 * i  # cada activo pierde días distintos
+        close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, len(idx)))), index=idx)
+        assets.append(AssetInput(ticker=f"G{i}", close=close[keep], volume=None))
+    panel = build_panel(assets)
+    per_date = panel.groupby("date")["ticker"].nunique()
+    assert (per_date == 6).mean() > 0.97
+    assert panel["date"].max() <= max(a.close.index.max() for a in assets)

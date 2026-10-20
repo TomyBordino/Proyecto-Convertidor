@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api, fetcher, type EventsOverview, type MacroEvent, type MacroSeries } from "@/lib/api";
+import { api, fetcher, type EventsOverview, type LocalSeries, type MacroEvent, type MacroSeries } from "@/lib/api";
 import { fmtNumber, fmtProb, fmtReturn } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -106,6 +106,17 @@ export function EventsView() {
           </Card>
         )}
       </section>
+
+      {data.local && data.local.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Termómetro argentino</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.local.map((m) => (
+              <LocalCard key={m.key} m={m} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Termómetro macro</h2>
@@ -297,6 +308,46 @@ function MacroCard({ m }: { m: MacroSeries }) {
         </div>
         <p className="tabular text-xs text-muted-foreground">
           20 ruedas {fmtChange(m, m.change_20)} · 60 ruedas {fmtChange(m, m.change_60)}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function fmtLocal(m: LocalSeries, v: number | null, delta = false): string {
+  if (v === null) return "—";
+  if (m.unit === "ratio") return delta ? `${v > 0 ? "+" : ""}${fmtNumber(v * 100, 1)} pp` : fmtProb(v, 1);
+  if (m.unit === "rate") return delta ? `${v > 0 ? "+" : ""}${fmtNumber(v, 1)} pp` : `${fmtNumber(v, 1)}%`;
+  if (delta) return fmtReturn(v);
+  return m.unit === "pts" ? fmtNumber(v, 0) : fmtNumber(v, v > 100 ? 0 : 2);
+}
+
+function LocalCard({ m }: { m: LocalSeries }) {
+  const rising = (m.change_30d ?? 0) >= 0;
+  // Para riesgo país, inflación y brecha, subir es una mala noticia.
+  const badWhenUp = m.key === "RIESGO_PAIS" || m.key === "INFLACION_AR" || m.key === "BRECHA";
+  const good = badWhenUp ? !rising : rising;
+  return (
+    <Card>
+      <CardHeader className="pb-0">
+        <CardDescription>{m.label}</CardDescription>
+        <CardTitle className="tabular text-lg">
+          {m.key === "MERVAL_USD" ? "US$ " : ""}
+          {m.key === "MEP" ? `$ ${fmtNumber(m.value, 0)}` : fmtLocal(m, m.value)}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        <div className="h-10">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={m.spark}>
+              <YAxis hide domain={["dataMin", "dataMax"]} />
+              <Line type="monotone" dataKey="value" dot={false} strokeWidth={1.5} stroke={good ? "#22a06b" : "#e5484d"} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="tabular text-xs text-muted-foreground">
+          30 días {fmtLocal(m, m.change_30d, true)} · 90 días {fmtLocal(m, m.change_90d, true)}
+          {m.annual != null && ` · últimos 12 meses ${fmtProb(m.annual, 1)}`}
         </p>
       </CardContent>
     </Card>

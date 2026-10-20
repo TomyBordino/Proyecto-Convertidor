@@ -156,8 +156,10 @@ def summary(ticker: str, d: dict) -> str:
     return " ".join(p for p in parts if p)
 
 
-def diagnose(assets: list[AssetInput], sectors: dict[str, str]) -> tuple[dict[str, dict], dict]:
-    panel = build_panel(assets)
+def diagnose(
+    assets: list[AssetInput], sectors: dict[str, str], panel: pd.DataFrame | None = None
+) -> tuple[dict[str, dict], dict]:
+    panel = build_panel(assets) if panel is None else panel
     report: dict = {
         "horizons": {},
         "stage_stats": {},
@@ -206,7 +208,8 @@ def diagnose(assets: list[AssetInput], sectors: dict[str, str]) -> tuple[dict[st
         for t, v in latest.set_index("ticker")["score"].rank(pct=True).items()
         if np.isfinite(v)
     }
-    closes = {a.ticker: a.close for a in assets}
+    # La etapa se mide sobre el precio (lo que muestra el gráfico), no sobre el retorno total.
+    closes = {a.ticker: a.price_close if a.price_close is not None else a.close for a in assets}
     out: dict[str, dict] = {}
     for i, (_, row) in enumerate(latest.iterrows()):
         t = row["ticker"]

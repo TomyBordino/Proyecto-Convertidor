@@ -11,6 +11,8 @@ const LINKS = [
   { href: "/ccl", label: "CCL" },
   { href: "/modelo", label: "Modelo" },
   { href: "/eventos", label: "Eventos" },
+  { href: "/backtest", label: "Backtest" },
+  { href: "/cartera", label: "Mi cartera" },
 ];
 
 export function MainNav() {

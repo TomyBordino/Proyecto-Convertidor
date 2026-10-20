@@ -25,6 +25,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    DividendEvent,
     FundamentalPeriod,
     FxRate,
     IngestionRun,
@@ -50,6 +51,8 @@ MIN_BARS_ACTIVE = 60  # ruedas mínimas en BYMA para analizar un activo
 INCREMENTAL_OVERLAP_DAYS = 15
 METADATA_TTL = timedelta(days=30)
 FUNDAMENTALS_TTL = timedelta(days=7)
+# Balances bajados antes de esta fecha no incluyen los trimestres (TTM): se vuelven a pedir.
+FUNDAMENTALS_SCHEMA_SINCE = datetime(2026, 10, 20)
 
 
 class IngestionError(RuntimeError):
@@ -116,6 +119,7 @@ def store_fundamentals(session: Session, inst: Instrument, statements: list) -> 
                 instrument_id=inst.id,
                 period_end=s.period_end,
                 currency=s.currency,
+                period_type=s.period_type,
                 **{k: d[k] for k in STATEMENT_FIELDS},
             )
         )
@@ -386,6 +390,22 @@ def run_ingestion(
             )
         session.flush()
 
+    # --------------------------------------------------------- dividendos
+    div_fn = getattr(provider, "dividends", None)
+    if div_fn:
+        for inst in insts.values():
+            if not inst.us_symbol or inst.active is False:
+                continue
+            dv = div_fn(inst.us_symbol)
+            if dv is None:
+                continue
+            session.execute(delete(DividendEvent).where(DividendEvent.instrument_id == inst.id))
+            session.add_all(
+                DividendEvent(instrument_id=inst.id, day=d.date(), amount=float(a))
+                for d, a in dv.groupby(dv.index).sum().items()
+            )
+        session.flush()
+
     # -------------------------------------------------------- CCL final
     ccl = build_market_ccl(pairs)
     # Se reemplaza el rango que cubre la serie nueva (puede empezar antes de `start` si hay
@@ -434,6 +454,7 @@ def run_ingestion(
         if insts[t].sector != "ETF"
         and (
             _stale(insts[t].fundamentals_updated_at, now, FUNDAMENTALS_TTL)
+            or (insts[t].fundamentals_updated_at or now) < FUNDAMENTALS_SCHEMA_SINCE
             or _stored_periods(session, insts[t]) <= SHORT_HISTORY_PERIODS
         )
     ]

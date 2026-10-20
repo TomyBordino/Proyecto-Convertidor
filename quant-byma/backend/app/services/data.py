@@ -7,7 +7,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analytics.fundamental import FinancialStatement
-from app.db.models import FundamentalPeriod, FxRate, Instrument, PriceBar, SplitEvent
+from app.db.models import (
+    DividendEvent,
+    FundamentalPeriod,
+    FxRate,
+    Instrument,
+    PriceBar,
+    SplitEvent,
+)
 from app.ingestion.providers.base import OHLCV_COLUMNS
 
 STATEMENT_FIELDS = [
@@ -70,6 +77,7 @@ def load_statements(session: Session, instrument_id: int) -> list[FinancialState
         FinancialStatement(
             period_end=r.period_end,
             currency=r.currency,
+            period_type=r.period_type or "FY",
             **{f: getattr(r, f) for f in STATEMENT_FIELDS},
         )
         for r in rows
@@ -100,6 +108,38 @@ def load_splits(session: Session, instrument_id: int) -> pd.Series:
     if not rows:
         return pd.Series(dtype=float)
     return pd.Series([r[1] for r in rows], index=pd.to_datetime([r[0] for r in rows]))
+
+
+def load_dividends(session: Session, instrument_id: int) -> pd.Series:
+    rows = session.execute(
+        select(DividendEvent.day, DividendEvent.amount)
+        .where(DividendEvent.instrument_id == instrument_id)
+        .order_by(DividendEvent.day)
+    ).all()
+    if not rows:
+        return pd.Series(dtype=float)
+    return pd.Series([r[1] for r in rows], index=pd.to_datetime([r[0] for r in rows]))
+
+
+def total_return_close(close: pd.Series, dividends: pd.Series) -> pd.Series:
+    """Cierre ajustado por dividendos (reinvertidos en la fecha ex), anclado al último precio.
+
+    Cada dividendo multiplica los precios anteriores por (1 − d / cierre previo), como el
+    "adjusted close" de los proveedores: los retornos pasan a ser retornos totales.
+    """
+    if dividends.empty or close.empty:
+        return close
+    close = close.sort_index()
+    factor = pd.Series(1.0, index=close.index)
+    for day, amount in dividends.items():
+        prev = close[close.index < day]
+        if prev.empty or prev.iloc[-1] <= 0:
+            continue
+        ratio = 1 - float(amount) / float(prev.iloc[-1])
+        if not 0.5 < ratio < 1:
+            continue  # dividendo absurdo para el precio (dato erróneo o especial gigante)
+        factor[close.index < day] *= ratio
+    return close * factor
 
 
 # Un split hasta esta cantidad de días después del cierre puede estar ya reflejado en la

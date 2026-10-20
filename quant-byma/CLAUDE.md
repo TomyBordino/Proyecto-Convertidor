@@ -20,6 +20,11 @@ aislada del sitio estático (ConvertiYa) que ocupa la raíz del repositorio.
     volatilidad, por decil de puntaje solo si mejora la pinball), con cobertura validada walk-forward.
   - `app/analytics/events.py` + `app/services/events.py` — capa de eventos: reglas macro sobre series
     de mercado, estudio de eventos por sector, sensibilidades, noticias y presión por activo/sector.
+  - `app/analytics/backtest.py` — backtest de estrategias sobre el panel cacheado (`panel_cache.pkl`,
+    se regenera en cada ingesta) con costos y colchón de permanencia.
+  - `app/services/portfolio.py` + `portfolio_import.py` — cartera del usuario (importa Movimientos de
+    Balanz o CSV), valuación en USD MEP y riesgo con correlaciones.
+  - `app/ingestion/providers/local_macro.py` — riesgo país, inflación, MEP/CCL/oficial y Merval.
   - `app/services/news_ai.py` — clasificación de titulares con Claude (SDK `anthropic`, salida con
     JSON Schema, `fallbacks="default"`); los tests usan un cliente falso, nunca la API.
   - `app/services/` — pipeline de ingesta y cálculo de snapshots; `app/api/` — rutas `/api/*`.
@@ -66,6 +71,9 @@ correr una ingesta y `psql "$URL" -f backend/app/db/timescale.sql`.
   los componentes disponibles, nunca penaliza por falta de datos.
 - La capa de eventos es contexto: no tocar las probabilidades con ella salvo que mejore AUC y Brier
   skill fuera de muestra (la prueba con factores macro empeoró el Brier; ver README).
+- El panel del modelo usa un calendario semanal común (`W-FRI`): todos los activos comparten fechas
+  (`test_panel_dates_are_shared_across_assets_with_gaps`); no volver a muestrear por posición.
+- El modelo usa retorno total y solo balances anuales; los TTM son para mostrar ratios actuales.
 - Respuestas JSON sin NaN/Infinity (`_f()` en `services/analytics.py`).
 - Next 16: accesos a `params`/`usePathname` van dentro de `<Suspense>`; leer `node_modules/next/dist/docs/` ante dudas.
 - lightweight-charts solo acepta colores hex/rgb (no los tokens oklch) y se le fija `locale: "es-AR"`.

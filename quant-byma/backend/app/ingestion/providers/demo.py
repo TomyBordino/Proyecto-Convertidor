@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import zlib
 from datetime import date
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -141,7 +142,7 @@ class DemoProvider:
             liabilities = assets - equity
             debt = liabilities * rng.uniform(0.2, 0.6)
             ocf = net * rng.uniform(1.0, 1.5)
-            stmt = dict(
+            stmt: dict[str, Any] = dict(
                 revenue=revenue,
                 ebit=ebit,
                 ebitda=ebitda,

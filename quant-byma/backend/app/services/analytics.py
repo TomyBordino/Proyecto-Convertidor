@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -17,7 +18,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.analytics import fundamental as fa
-from app.analytics.model import AssetInput
+from app.analytics.model import AssetInput, build_panel
 from app.analytics.patterns import detect_breakout, last_ma_cross, rsi_divergence
 from app.analytics.scoring import (
     ScoringWeights,
@@ -29,17 +30,20 @@ from app.analytics.scoring import (
     technical_subscore,
 )
 from app.analytics.technical import compute_all
+from app.config import get_settings
 from app.db.models import Instrument, ModelRun, ScoreSnapshot
 from app.ingestion.ccl import ccl_deviation, implied_ccl, is_ratio_suspect
 from app.ingestion.normalization import ccl_close_and_avg, statement_to_usd
 from app.ingestion.universe import UNIVERSE_BY_TICKER
 from app.services.data import (
     load_bars,
+    load_dividends,
     load_fx,
     load_splits,
     load_statements,
     split_adjust_statements,
     to_usd_ccl,
+    total_return_close,
 )
 from app.services.diagnosis import diagnose
 
@@ -99,13 +103,22 @@ def price_on_or_before(series: pd.Series, day: date) -> float | None:
 
 
 def ratio_history(statements: list[fa.FinancialStatement], close_usd: pd.Series) -> list[dict]:
-    rows, prev = [], None
-    for s in statements:
+    """Ratios de cada ejercicio anual y, al final, de los últimos 12 meses (TTM) si hay un
+    trimestre posterior al último ejercicio."""
+    annual = fa.annual_only(statements)
+    ttm = [s for s in statements if s.period_type == "TTM"]
+    shown = annual + (
+        [ttm[-1]] if ttm and (not annual or ttm[-1].period_end > annual[-1].period_end) else []
+    )
+    rows = []
+    for s in shown:
+        prev = fa.year_ago(statements, s)
         px = price_on_or_before(close_usd, s.period_end)
         r = fa.all_ratios(px, s, prev) if px else {}
         rows.append(
             {
                 "period_end": s.period_end.isoformat(),
+                "period_type": s.period_type,
                 "price_usd": _f(px),
                 "revenue": _f(s.revenue),
                 "net_income": _f(s.net_income),
@@ -114,7 +127,6 @@ def ratio_history(statements: list[fa.FinancialStatement], close_usd: pd.Series)
                 **{k: _f(v) for k, v in r.items()},
             }
         )
-        prev = s
     return rows
 
 
@@ -205,12 +217,12 @@ def compute_snapshots(
             ccl,
         )
         px_share = per_share_close(inst, series, series_kind)
-        hist_rows = ratio_history(statements, px_share)
+        hist_rows = ratio_history(fa.annual_only(statements), px_share)
         current = (
             fa.all_ratios(
                 float(px_share.iloc[-1]),
                 statements[-1],
-                statements[-2] if len(statements) > 1 else None,
+                fa.year_ago(statements, statements[-1]),
             )
             if statements
             else {}
@@ -218,10 +230,15 @@ def compute_snapshots(
         model_inputs.append(
             AssetInput(
                 ticker=inst.ticker,
-                close=series["close"],
+                close=total_return_close(series["close"], load_dividends(session, inst.id))
+                if series_kind == "US"
+                else series["close"],
                 volume=series.get("volume"),
-                statements=statements,
+                # El modelo usa solo ejercicios anuales: los TTM no mejoraron la validación
+                # fuera de muestra (sí se usan para mostrar los ratios actuales).
+                statements=fa.annual_only(statements),
                 price_per_share=px_share,
+                price_close=series["close"],
             )
         )
         staged.append(
@@ -239,8 +256,10 @@ def compute_snapshots(
             )
         )
 
+    panel = build_panel(model_inputs)
+    save_panel(panel)
     diagnosis, model_report = diagnose(
-        model_inputs, {r["inst"].ticker: r["inst"].sector for r in staged}
+        model_inputs, {r["inst"].ticker: r["inst"].sector for r in staged}, panel
     )
     model_report["as_of"] = asof.date().isoformat()
     session.execute(delete(ModelRun).where(ModelRun.as_of == asof.date()))
@@ -325,6 +344,35 @@ def compute_snapshots(
         )
     session.flush()
     return len(staged)
+
+
+PANEL_COLUMNS = (
+    "date",
+    "ticker",
+    "score",
+    "trend_score",
+    "value_score",
+    "stage",
+    "fwd_20",
+    "fwd_60",
+    "fwd_120",
+    "vol_60",
+)
+
+
+def save_panel(panel: pd.DataFrame) -> None:
+    """Guarda las columnas del panel que usa el backtest (evita recalcularlo por request)."""
+    if panel.empty:
+        return
+    path = Path(get_settings().panel_cache_path)
+    tmp = path.with_suffix(".tmp")
+    panel[[c for c in PANEL_COLUMNS if c in panel.columns]].to_pickle(tmp)
+    tmp.replace(path)
+
+
+def load_panel() -> pd.DataFrame | None:
+    path = Path(get_settings().panel_cache_path)
+    return pd.read_pickle(path) if path.exists() else None
 
 
 def diagnosis_columns(d: dict | None) -> dict:

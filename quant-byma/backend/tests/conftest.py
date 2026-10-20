@@ -6,6 +6,7 @@ from pathlib import Path
 # La app lee QB_DATABASE_URL en su lifespan: apuntamos a una DB temporal antes de importarla.
 _DB = Path(tempfile.mkdtemp()) / "test.db"
 os.environ["QB_DATABASE_URL"] = f"sqlite:///{_DB}"
+os.environ["QB_PANEL_CACHE_PATH"] = str(_DB.parent / "panel.pkl")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

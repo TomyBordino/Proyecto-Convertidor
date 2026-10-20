@@ -254,6 +254,7 @@ export interface PriceSeries {
 
 export interface FundamentalPeriod {
   period_end: string;
+  period_type?: "FY" | "TTM";
   price_usd: number | null;
   revenue: number | null;
   net_income: number | null;
@@ -341,6 +342,18 @@ export interface MacroSeries {
   spark: Point[];
 }
 
+export interface LocalSeries {
+  key: string;
+  label: string;
+  unit: "usd" | "pts" | "rate" | "ratio";
+  as_of: string;
+  value: number;
+  change_30d: number | null;
+  change_90d: number | null;
+  annual?: number | null;
+  spark: Point[];
+}
+
 export interface NewsImpact {
   target_type: "sector" | "ticker";
   target: string;
@@ -392,6 +405,7 @@ export interface EventsOverview {
   sector_sensitivities: Record<string, Record<string, { impact: number; n: number }>>;
   factors: Record<string, { label: string }>;
   macro: MacroSeries[];
+  local?: LocalSeries[];
   event_labels: Record<string, string>;
   sector_pressure: Record<string, Pressure>;
   ticker_pressure: Record<string, Pressure>;
@@ -465,6 +479,101 @@ export interface IngestStatus {
   error: string | null;
 }
 
+export interface PerfMetrics {
+  cagr: number | null;
+  vol: number | null;
+  sharpe: number | null;
+  max_drawdown: number;
+  total_return: number;
+  hit_rate: number;
+  worst_period: number;
+  best_period: number;
+}
+
+export interface BacktestResult {
+  status: string;
+  periods: number;
+  first_date: string;
+  last_date: string;
+  metrics: { strategy: PerfMetrics; strategy_gross: PerfMetrics; universe: PerfMetrics; benchmark: Partial<PerfMetrics> };
+  beat_universe: number;
+  avg_turnover: number | null;
+  years_beat_universe: number;
+  curves: { time: string; strategy: number; universe: number; benchmark: number }[];
+  by_year: { year: number; strategy: number; universe: number; benchmark: number }[];
+  picks: { ticker: string; name: string | null }[];
+  quintiles: { quintile: number; cagr: number | null; hit_rate: number; periods: number }[];
+}
+
+export interface PortfolioHolding {
+  id: number;
+  ticker: string;
+  in_universe: boolean;
+  name: string | null;
+  sector: string | null;
+  kind: Kind | null;
+  quantity: number;
+  price_ars: number | null;
+  value_ars: number | null;
+  value_usd: number | null;
+  cost_usd: number | null;
+  cost_ars: number | null;
+  pnl_usd: number | null;
+  pnl_pct: number | null;
+  income_usd: number | null;
+  opened_at: string | null;
+  source: string;
+  stage: number | null;
+  substate: string | null;
+  prob_up_60: number | null;
+  range_low_60: number | null;
+  range_mid_60: number | null;
+  range_high_60: number | null;
+  news_label: NewsLabel | null;
+  weight: number | null;
+}
+
+export interface PortfolioResponse {
+  summary: {
+    value_usd: number | null;
+    value_ars: number | null;
+    cost_usd: number | null;
+    pnl_usd: number | null;
+    pnl_pct: number | null;
+    income_usd: number | null;
+    mep: number | null;
+    n: number;
+    unpriced: string[];
+    prob_up_60: number | null;
+    top_weight: number | null;
+    hhi: number | null;
+  };
+  holdings: PortfolioHolding[];
+  sectors: { sector: string; weight: number }[];
+  risk: {
+    vol: number;
+    avg_vol: number;
+    diversification: number | null;
+    max_drawdown_3y: number;
+    ranges: Record<string, { p10: number; p25: number; p50: number; p75: number; p90: number }>;
+    most_correlated: { a: string; b: string; corr: number } | null;
+    weeks: number;
+  } | null;
+  events: {
+    active: { key: string; name: string; state: string; weight_favorable: number; weight_unfavorable: number }[];
+    factors: { factor: string; label: string; impact: number; coverage: number }[];
+  };
+}
+
+export interface ImportSummary {
+  kind: string;
+  positions: number;
+  outside_universe: string[];
+  rows_used: number;
+  rows_skipped: number;
+  warnings: string[];
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -502,5 +611,24 @@ export const api = {
   deleteFilter: (id: number) => request<void>(`/api/filters/${id}`, { method: "DELETE" }),
   ingest: () => request<IngestStatus & { started: boolean }>("/api/ingest", { method: "POST" }),
   ingestStatus: () => request<IngestStatus>("/api/ingest/status"),
+  saveHolding: (h: { ticker: string; quantity: number; price?: number; currency: "ARS" | "USD"; opened_at?: string }) =>
+    request<{ id: number }>("/api/portfolio/holdings", { method: "POST", body: JSON.stringify(h) }),
+  deleteHolding: (id: number) => request<void>(`/api/portfolio/holdings/${id}`, { method: "DELETE" }),
+  importPortfolio: async (file: File, replace: boolean) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/portfolio/import?replace=${replace}`, { method: "POST", body: form });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      } catch {
+        /* sin cuerpo JSON */
+      }
+      throw new ApiError(res.status, detail);
+    }
+    return (await res.json()) as ImportSummary;
+  },
   refreshEvents: () => request<Record<string, unknown>>("/api/events/refresh", { method: "POST" }),
 };

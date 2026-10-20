@@ -83,11 +83,12 @@ class _YahooPrices:
         self._y = YahooProvider()
         self._cache: dict[str, pd.DataFrame] = {}
         self.splits: dict[str, pd.Series] = {}
+        self.dividends: dict[str, pd.Series] = {}
 
     def prefetch(self, symbols: list[str], start: date, end: date) -> int:
         from app.ingestion.providers.yahoo import batch_history
 
-        data, splits = batch_history(symbols, start, end)
+        data, splits = batch_history(symbols, start, end, dividends_out=self.dividends)
         self._cache.update(data)
         self.splits.update(splits)
         return len(self._cache)
@@ -195,6 +196,13 @@ class RealDataProvider:
         for src in self.us:
             if isinstance(src, _YahooPrices) and src._cache:
                 return src.splits.get(symbol, pd.Series(dtype=float))
+        return None
+
+    def dividends(self, symbol: str) -> pd.Series | None:
+        """Dividendos en efectivo por acción del símbolo (None si la fuente no los informó)."""
+        for src in self.us:
+            if isinstance(src, _YahooPrices) and src._cache:
+                return src.dividends.get(symbol, pd.Series(dtype=float))
         return None
 
     def metadata(self, symbol: str) -> dict:

@@ -37,12 +37,15 @@ import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import brier_score_loss, roc_auc_score
 
+from app.analytics.fundamental import year_ago
 from app.analytics.regime import stage_series
 from app.analytics.technical import bollinger, rsi, sma
 
 HORIZONS = (20, 60, 120)
 STEP = 5  # una muestra por semana y activo
 FILING_LAG_DAYS = 100
+# Los 10-Q se presentan hasta 40–45 días después del cierre del trimestre.
+TTM_FILING_LAG_DAYS = 50
 MIN_TRAIN_SAMPLES = 2000
 MIN_TRAIN_YEARS = 2
 MIN_AUC = 0.51
@@ -52,7 +55,10 @@ MIN_BRIER_SKILL = 0.0005
 CALIBRATION_BINS = 50
 
 TREND_FACTORS = ("slope_200", "mom_12_1", "dist_sma200", "dd_252")
-VALUE_FACTORS = ("r_earnings_yield", "r_book_yield", "r_fcf_yield", "r_sales_yield")
+# Valuación + calidad (ROE): la calidad mejoró AUC y Brier skill fuera de muestra en los
+# tres horizontes (absoluto y relativo); crecimiento, endeudamiento, baja volatilidad y
+# reversión de corto plazo no pasaron la misma prueba (ver README).
+VALUE_FACTORS = ("r_earnings_yield", "r_book_yield", "r_fcf_yield", "r_sales_yield", "r_roe")
 TREND_WEIGHT = 0.5
 
 TECH_FEATURES = {
@@ -74,7 +80,7 @@ FUND_FEATURES = {
     "r_sales_yield": "Barata por P/S (percentil)",
     "r_book_yield": "Barata por P/B (percentil)",
     "r_fcf_yield": "Rendimiento de flujo de caja (percentil)",
-    "r_roe": "Rentabilidad ROE (percentil)",
+    "r_roe": "Calidad: rentabilidad sobre el patrimonio (ROE)",
     "r_growth": "Crecimiento de ventas (percentil)",
     "r_low_leverage": "Bajo endeudamiento (percentil)",
     "has_fundamentals": "Tiene balances publicados",
@@ -136,23 +142,28 @@ def point_in_time_fundamentals(
     cols = ["earnings_yield", "sales_yield", "book_yield", "fcf_yield", "roe", "growth", "lev"]
     if not statements:
         return pd.DataFrame(np.nan, index=dates, columns=cols)
-    rows, prev_rev = [], None
-    for s in statements:
+    rows: list[dict] = []
+    shares = None
+    by_end = {s.period_end: s for s in statements}
+    for s in sorted(statements, key=lambda x: x.period_end):
         fcf = None
         if s.operating_cash_flow is not None and s.capex is not None:
             fcf = s.operating_cash_flow - abs(s.capex)
         growth = None
-        if s.revenue and prev_rev and prev_rev > 0:
-            growth = s.revenue / prev_rev - 1
-        prev_rev = s.revenue
+        prev = year_ago(list(by_end.values()), s)
+        if s.revenue and prev is not None and prev.revenue and prev.revenue > 0:
+            growth = s.revenue / prev.revenue - 1
+        # Un 10-Q sin portada de acciones conserva las últimas conocidas.
+        shares = s.shares_outstanding or shares
+        lag = TTM_FILING_LAG_DAYS if s.period_type == "TTM" else FILING_LAG_DAYS
         rows.append(
             {
-                "available": pd.Timestamp(s.period_end) + pd.Timedelta(days=FILING_LAG_DAYS),
+                "available": pd.Timestamp(s.period_end) + pd.Timedelta(days=lag),
                 "ni": s.net_income,
                 "rev": s.revenue,
                 "eq": s.equity,
                 "fcf": fcf,
-                "shares": s.shares_outstanding,
+                "shares": shares,
                 "growth": growth,
                 "lev": (s.total_debt / s.equity) if s.total_debt is not None and s.equity else None,
                 "roe": (s.net_income / s.equity) if s.net_income is not None and s.equity else None,
@@ -183,15 +194,17 @@ def point_in_time_fundamentals(
 @dataclass
 class AssetInput:
     ticker: str
-    close: pd.Series  # serie de análisis en USD
+    close: pd.Series  # serie de análisis en USD (retorno total si hay dividendos)
     volume: pd.Series | None
     statements: list = field(default_factory=list)  # balances en USD
     price_per_share: pd.Series | None = None
+    price_close: pd.Series | None = None  # precio sin ajustar por dividendos (etapas)
 
 
-def build_panel(assets: list[AssetInput], step: int = STEP) -> pd.DataFrame:
+def build_panel(assets: list[AssetInput]) -> pd.DataFrame:
     """Panel (fecha, ticker) con features, etapa y retornos futuros."""
     frames = []
+    last_days: list[pd.Timestamp] = []
     for a in assets:
         close = a.close.dropna()
         close = close[close > 0]
@@ -205,14 +218,20 @@ def build_panel(assets: list[AssetInput], step: int = STEP) -> pd.DataFrame:
             close.index, a.statements, a.price_per_share if a.price_per_share is not None else close
         )
         df = pd.concat([tech, fwd, fund], axis=1)
-        # Muestreo semanal alineado a la última rueda (que siempre queda incluida).
-        keep = np.arange(len(df) - 1, -1, -step)[::-1]
-        df = df.iloc[keep]
+        # Muestreo semanal en un calendario común (último dato de cada semana, rotulado por
+        # su viernes): todos los activos comparten fechas, condición para que los
+        # percentiles de corte transversal comparen contra el universo completo.
+        df = df.groupby(df.index.to_period("W-FRI")).tail(1)
+        df.index = df.index.to_period("W-FRI").end_time.normalize()
         df["ticker"] = a.ticker
         frames.append(df)
+        last_days.append(close.index.max())
     if not frames:
         return pd.DataFrame()
     panel = pd.concat(frames)
+    # La semana en curso se rotula con el último día con datos (no con un viernes futuro).
+    last = max(last_days)
+    panel.index = panel.index.where(panel.index <= last, last)
     panel.index.name = "date"
     panel = panel.reset_index()
     # Percentiles de corte transversal por fecha (solo entre activos con dato).

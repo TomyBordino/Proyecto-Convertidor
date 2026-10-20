@@ -189,7 +189,7 @@ export function ModelView() {
                 </ul>
               </div>
               <div>
-                <p className="font-medium">Valuación · {fmtProb(r.weights?.value)} (si hay balances)</p>
+                <p className="font-medium">Valuación y calidad · {fmtProb(r.weights?.value)} (si hay balances)</p>
                 <ul className="mt-1 list-disc pl-5 text-muted-foreground">
                   {(r.weights?.value_factors ?? []).map((f) => (
                     <li key={f}>{data.features[f] ?? f}</li>

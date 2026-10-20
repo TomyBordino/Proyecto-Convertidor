@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     news_max_tickers: int = 120
     news_lookback_days: int = 14
 
+    # Panel histórico para el backtest (se regenera en cada ingesta).
+    panel_cache_path: str = "./panel_cache.pkl"
+
     cors_origins: list[str] = ["http://localhost:3000"]
 
 

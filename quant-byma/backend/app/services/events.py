@@ -19,6 +19,12 @@ from app.analytics import events as ev
 from app.config import Settings
 from app.db.models import EventReport, Instrument, MacroPoint, NewsAnalysis, NewsItem
 from app.ingestion.providers.base import ProviderError
+from app.ingestion.providers.local_macro import (
+    LOCAL_SERIES,
+    LocalMacroSource,
+    derived,
+    fetch_merval,
+)
 from app.ingestion.providers.macro import MACRO_SERIES, fetch_macro
 from app.ingestion.providers.news import MACRO_QUERIES, Headline, YahooNewsSource
 from app.services.analytics import analysis_series
@@ -71,9 +77,25 @@ def load_macro(session: Session) -> dict[str, pd.Series]:
 
 def refresh_macro(session: Session, history_start: date, end: date | None = None) -> int:
     end = end or date.today()
-    last = session.scalar(select(MacroPoint.day).order_by(MacroPoint.day.desc()).limit(1))
+    last = session.scalar(
+        select(MacroPoint.day)
+        .where(MacroPoint.key.in_(list(MACRO_SERIES)))
+        .order_by(MacroPoint.day.desc())
+        .limit(1)
+    )
     start = last - timedelta(days=30) if last else history_start
     return store_macro(session, fetch_macro(start, end))
+
+
+def refresh_local_macro(session: Session, history_start: date, end: date | None = None) -> int:
+    """Series argentinas completas (son pocas filas: se reemplazan en cada corrida)."""
+    end = end or date.today()
+    base = LocalMacroSource().fetch(history_start, end)
+    merval = fetch_merval(history_start, end)
+    series = {**base, **derived(base, merval)}
+    if merval is not None:
+        series["MERVAL"] = merval
+    return store_macro(session, series)
 
 
 # --- reporte de eventos -----------------------------------------------------------------
@@ -121,6 +143,7 @@ def compute_event_report(session: Session) -> dict:
         "sector_sensitivities": ev.sector_sensitivities(sens, sectors),
         "factors": {k: {"label": v[3]} for k, v in ev.FACTORS.items()},
         "macro": ev.macro_snapshot(macro, {k: (v[1], v[2]) for k, v in MACRO_SERIES.items()}),
+        "local": ev.local_snapshot(macro, LOCAL_SERIES),
     }
     session.add(EventReport(as_of=date.fromisoformat(as_of), report=report))
     session.flush()
@@ -354,6 +377,10 @@ def refresh_events(session: Session, settings: Settings) -> dict:
         out["macro_points"] = refresh_macro(session, settings.model_history_start)
     except Exception as exc:  # la capa de eventos nunca debe tumbar la ingesta
         out["errors"].append(f"series macro: {exc}")
+    try:
+        out["local_points"] = refresh_local_macro(session, settings.model_history_start)
+    except Exception as exc:
+        out["errors"].append(f"series argentinas: {exc}")
     try:
         rep = compute_event_report(session)
         out["active_events"] = [e["key"] for e in rep.get("events", []) if e["state"] != "inactivo"]

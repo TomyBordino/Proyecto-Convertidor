@@ -27,6 +27,8 @@ class FinancialStatement:
     capex: float | None = None  # negativo o positivo; se toma el valor absoluto
     shares_outstanding: float | None = None
     tax_rate: float | None = None
+    # "FY": ejercicio anual. "TTM": últimos 12 meses a un cierre trimestral (10-Q).
+    period_type: str = "FY"
 
 
 def _div(a: float | None, b: float | None, positive_denominator: bool = True) -> float | None:
@@ -119,6 +121,24 @@ def altman_z(mcap: float | None, s: FinancialStatement) -> float | None:
     d = mcap / tl
     e = s.revenue / ta
     return 1.2 * a + 1.4 * b + 3.3 * c + 0.6 * d + 1.0 * e
+
+
+def year_ago(
+    statements: list[FinancialStatement], s: FinancialStatement
+) -> FinancialStatement | None:
+    """Balance de ~12 meses antes de `s` (para crecimiento interanual con anuales y TTM)."""
+    best = None
+    for p in statements:
+        gap = (s.period_end - p.period_end).days
+        if 330 <= gap <= 400 and (
+            best is None or abs(gap - 365) < abs((s.period_end - best.period_end).days - 365)
+        ):
+            best = p
+    return best
+
+
+def annual_only(statements: list[FinancialStatement]) -> list[FinancialStatement]:
+    return [s for s in statements if s.period_type != "TTM"]
 
 
 def all_ratios(price: float, s: FinancialStatement, previous: FinancialStatement | None) -> dict:

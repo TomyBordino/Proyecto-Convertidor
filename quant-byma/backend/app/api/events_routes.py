@@ -45,6 +45,7 @@ def events_overview(session: Session = SessionDep, days: int = Query(7, ge=1, le
         "sector_sensitivities": report.get("sector_sensitivities", {}),
         "factors": report.get("factors", {}),
         "macro": report.get("macro", []),
+        "local": report.get("local", []),
         "event_labels": EVENT_LABELS,
         "sector_pressure": by_sector,
         "ticker_pressure": {

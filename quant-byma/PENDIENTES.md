@@ -41,10 +41,19 @@ Estado al 2026-10-18, después de validar la ingesta con datos reales (ver READM
 - [ ] Validar fuera de muestra la presión de noticias como factor cuando haya meses de historial
       clasificado (hoy solo se acumula desde la primera corrida).
 
+## Cartera y backtest
+
+- [ ] Importar también los PDF de "Cuenta Corriente por Concertación" de Balanz y otros brokers.
+- [ ] Backtest de los filtros guardados del screener (hoy usa estrategias predefinidas, porque varios
+      campos del screener no tienen historia point-in-time).
+- [ ] Universo histórico sin sesgo de supervivencia (incluir activos que dejaron de cotizar).
+
 ## Modelo
 
-- [ ] Evaluar features adicionales: revisiones de estimaciones de analistas, sorpresas de
-      resultados, flujo de CEDEARs (volumen anómalo en BYMA), tasa real y riesgo país.
+- [x] Probados: calidad (entra), crecimiento, endeudamiento, baja volatilidad, reversión, TTM,
+      rangos por VIX (no entran). Ver README.
+- [ ] Pendientes de probar: revisiones de analistas, sorpresas de resultados, flujo de CEDEARs
+      (volumen anómalo en BYMA).
 - [ ] Probar modelos no lineales (gradient boosting) contra la logística con la misma validación
       walk-forward; adoptarlos solo si mejoran AUC y calibración fuera de muestra.
 - [ ] Objetivo relativo (superar al universo/al SPY) además de "subir en USD".

@@ -230,6 +230,35 @@ RULES: tuple[EventRule, ...] = (
     ),
 )
 
+RULES = RULES + (
+    EventRule(
+        "riesgo_pais_suba",
+        "Estrés argentino (riesgo país en alza)",
+        "Argentina",
+        "El riesgo país subió 150 pb o más en 20 ruedas.",
+        ("RIESGO_PAIS",),
+        "change",
+        20,
+        150.0,
+        1,
+        None,
+        1,
+    ),
+    EventRule(
+        "riesgo_pais_baja",
+        "Compresión del riesgo país",
+        "Argentina",
+        "El riesgo país bajó 150 pb o más en 20 ruedas.",
+        ("RIESGO_PAIS",),
+        "change",
+        20,
+        -150.0,
+        -1,
+        None,
+        -1,
+    ),
+)
+
 # factor → (series, medida semanal, tamaño del shock de referencia, etiqueta)
 FACTORS: dict[str, tuple[tuple[str, ...], str, float, str]] = {
     "UST10Y": (("UST10Y",), "change", 0.25, "+25 pb en la tasa a 10 años"),
@@ -278,7 +307,11 @@ def _fmt_stat(rule: EventRule, v: float) -> str:
     if rule.measure == "return":
         return f"{v:+.1%}"
     if rule.measure == "change":
-        return f"{v * 100:+.0f} pb" if rule.series[0].startswith("UST") else f"{v:+.2f}"
+        if rule.series[0].startswith("UST"):
+            return f"{v * 100:+.0f} pb"
+        if rule.series[0] == "RIESGO_PAIS":
+            return f"{v:+.0f} pb"
+        return f"{v:+.2f}"
     return f"{v:.1f}"
 
 
@@ -558,3 +591,51 @@ def asset_exposure(
             }
         )
     return out
+
+
+def local_snapshot(series: dict[str, pd.Series], labels: dict[str, tuple[str, str]]) -> list[dict]:
+    """Termómetro argentino. Variaciones por fecha (30 y 90 días corridos) para que sirvan
+    igual con series diarias y mensuales; tasas y cocientes varían en puntos, el resto en %."""
+    rows = []
+    for key, (label, unit) in labels.items():
+        s = series.get(key)
+        if s is None or s.empty:
+            continue
+        s = s.sort_index()
+        last_day, last = s.index[-1], float(s.iloc[-1])
+
+        def chg(
+            days: int,
+            s: pd.Series = s,
+            last: float = last,
+            unit: str = unit,
+            last_day: pd.Timestamp = last_day,
+        ) -> float | None:
+            prev = s[s.index <= last_day - pd.Timedelta(days=days)]
+            if prev.empty:
+                return None
+            p = float(prev.iloc[-1])
+            if unit in ("rate", "ratio"):
+                return round(last - p, 4)
+            return round(last / p - 1, 4) if p else None
+
+        row = {
+            "key": key,
+            "label": label,
+            "unit": unit,
+            "as_of": str(last_day.date()),
+            "value": round(last, 4),
+            "change_30d": chg(30),
+            "change_90d": chg(90),
+            "spark": [
+                {"time": str(d.date()), "value": round(float(v), 4)}
+                for d, v in s[s.index >= last_day - pd.Timedelta(days=365)].items()
+            ],
+        }
+        if key == "INFLACION_AR":
+            last12 = s.iloc[-12:]
+            row["annual"] = (
+                round(float(np.prod(1 + last12 / 100) - 1), 4) if len(last12) == 12 else None
+            )
+        rows.append(row)
+    return rows

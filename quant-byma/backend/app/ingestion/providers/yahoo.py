@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
+from typing import Any
 
 import pandas as pd
 
@@ -53,13 +54,18 @@ SECTOR_ES = {
 
 
 def batch_history(
-    symbols: list[str], start: date, end: date, chunk: int = 80
+    symbols: list[str],
+    start: date,
+    end: date,
+    chunk: int = 80,
+    dividends_out: dict[str, pd.Series] | None = None,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, pd.Series]]:
     """Descarga diaria en lote (una request por bloque de símbolos).
 
     Devuelve ({símbolo: OHLCV}, {símbolo: splits}). Los precios vienen ajustados por splits
     (no por dividendos); los splits sirven para llevar las acciones de cada balance a la
-    misma base que el precio.
+    misma base que el precio. Si se pasa `dividends_out`, se completa con los dividendos en
+    efectivo por acción (para armar la serie de retorno total).
     """
     import yfinance as yf
 
@@ -91,6 +97,11 @@ def batch_history(
                 if not sp.empty:
                     sp.index = pd.DatetimeIndex(sp.index).tz_localize(None).normalize()
                     splits[sym] = sp.astype(float)
+            if dividends_out is not None and "dividends" in df:
+                dv = df["dividends"].dropna()
+                dv = dv[dv > 0]
+                dv.index = pd.DatetimeIndex(dv.index).tz_localize(None).normalize()
+                dividends_out[sym] = dv.astype(float)
             df = df[[c for c in OHLCV_COLUMNS if c in df]].dropna(subset=["close"])
             if df.empty:
                 continue
@@ -162,7 +173,7 @@ class YahooProvider:
             return []
         out = []
         for col in sorted(merged.columns):
-            values = {}
+            values: dict[str, Any] = {}
             for field_name, candidates in ROWS.items():
                 for row in candidates:
                     if row in merged.index and pd.notna(merged.at[row, col]):

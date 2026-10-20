@@ -24,6 +24,8 @@ from app.ingestion.providers.http import HttpClient
 log = logging.getLogger(__name__)
 
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+QUARTERLY_FORMS = {"10-Q", "10-Q/A", "10-K", "10-K/A"}
+MAX_TTM_PERIODS = 48
 # Ejercicios a conservar: los balances XBRL de la SEC arrancan en 2009; el modelo los usa
 # "point in time" para validar el factor de valuación con historia larga.
 MAX_PERIODS = 18
@@ -287,6 +289,162 @@ def parse_companyfacts(payload: dict) -> list[FinancialStatement]:
     return out
 
 
+def _quarter_flows(rows: list[dict]) -> dict[date, float]:
+    """Valor de cada trimestre (3 meses) por fecha de cierre. Usa los hechos trimestrales
+    directos y, si faltan, la diferencia entre acumulados del mismo ejercicio (p. ej. el
+    cuarto trimestre = anual − nueve meses)."""
+    spans: dict[tuple[date, date], tuple[str, float]] = {}
+    for f in rows:
+        if f.get("form") not in QUARTERLY_FORMS or "start" not in f or "end" not in f:
+            continue
+        key = (date.fromisoformat(f["start"]), date.fromisoformat(f["end"]))
+        filed = f.get("filed", "")
+        if key not in spans or filed >= spans[key][0]:
+            spans[key] = (filed, float(f["val"]))
+    out: dict[date, float] = {}
+    for (start, end), (_, v) in spans.items():
+        if 80 <= (end - start).days <= 100:
+            out[end] = v
+    by_start: dict[date, list[tuple[date, float]]] = {}
+    for (start, end), (_, v) in spans.items():
+        by_start.setdefault(start, []).append((end, v))
+    for lst in by_start.values():
+        lst.sort()
+        for (e1, v1), (e2, v2) in zip(lst, lst[1:], strict=False):
+            if 80 <= (e2 - e1).days <= 100 and e2 not in out:
+                out[e2] = v2 - v1
+    return out
+
+
+def _ttm(quarters: dict[date, float]) -> dict[date, float]:
+    """Suma de 4 trimestres consecutivos (cierres separados por 70–110 días)."""
+    ends = sorted(quarters)
+    out = {}
+    for i in range(3, len(ends)):
+        chain = ends[i - 3 : i + 1]
+        if all(70 <= (b - a).days <= 110 for a, b in zip(chain, chain[1:], strict=False)):
+            out[ends[i]] = sum(quarters[e] for e in chain)
+    return out
+
+
+def _concept_rows(facts: dict, concept_ids: tuple[str, ...], currency: str) -> list[list[dict]]:
+    groups = []
+    for cid in concept_ids:
+        taxonomy, name = cid.split(":")
+        concept = facts.get(taxonomy, {}).get(name)
+        if not concept:
+            continue
+        rows = concept.get("units", {}).get(currency)
+        if rows:
+            groups.append(rows)
+    return groups
+
+
+def ttm_values(facts: dict, concept_ids: tuple[str, ...], currency: str) -> dict[date, float]:
+    merged: dict[date, float] = {}
+    for rows in _concept_rows(facts, concept_ids, currency):
+        for d, v in _ttm(_quarter_flows(rows)).items():
+            merged.setdefault(d, v)
+    return merged
+
+
+def quarter_instants(facts: dict, concept_ids: tuple[str, ...], currency: str) -> dict[date, float]:
+    merged: dict[date, float] = {}
+    for rows in _concept_rows(facts, concept_ids, currency):
+        best: dict[date, tuple[str, float]] = {}
+        for f in rows:
+            if f.get("form") not in QUARTERLY_FORMS or "start" in f or "end" not in f:
+                continue
+            end = date.fromisoformat(f["end"])
+            filed = f.get("filed", "")
+            if end not in best or filed >= best[end][0]:
+                best[end] = (filed, float(f["val"]))
+        for d, (_, v) in best.items():
+            merged.setdefault(d, v)
+    return merged
+
+
+def parse_quarterly_ttm(
+    payload: dict, annual: list[FinancialStatement]
+) -> list[FinancialStatement]:
+    """Últimos 12 meses a cada cierre trimestral posterior al primer ejercicio anual, para
+    cierres que no coinciden con un ejercicio ya informado (10-Q de emisores de EE. UU.)."""
+    if not annual:
+        return []
+    facts = payload.get("facts", {})
+    currency = annual[-1].currency
+    flows: dict[str, dict[date, float]] = {
+        k: ttm_values(facts, DURATION_CONCEPTS[k], currency)
+        for k in (
+            "revenue",
+            "ebit",
+            "net_income",
+            "depreciation",
+            "depreciation_only",
+            "amortization_intangibles",
+            "operating_cash_flow",
+            "capex",
+            "pretax_income",
+            "interest_expense",
+        )
+        if k in DURATION_CONCEPTS
+    }
+    inst = {k: quarter_instants(facts, c, currency) for k, c in INSTANT_CONCEPTS.items()}
+    cover: dict[date, float] = {}
+    concept = facts.get("dei", {}).get("EntityCommonStockSharesOutstanding")
+    if concept:
+        for f in concept.get("units", {}).get("shares", []):
+            if f.get("form") in QUARTERLY_FORMS:
+                cover[date.fromisoformat(f["end"])] = float(f["val"])
+    annual_ends = {s.period_end for s in annual}
+    first = min(annual_ends)
+    ends = sorted(
+        e
+        for e in set(flows.get("revenue", {})) | set(flows.get("net_income", {}))
+        if e > first and all(abs((e - a).days) > 20 for a in annual_ends)
+    )[-MAX_TTM_PERIODS:]
+    out = []
+    for end in ends:
+        series: dict[str, dict[date, float]] = {**flows, **inst}
+        v: dict[str, float | None] = {k: s.get(end) for k, s in series.items()}
+        if (
+            v.get("total_liabilities") is None
+            and v.get("liabilities_and_equity") is not None
+            and v.get("equity") is not None
+        ):
+            v["total_liabilities"] = v["liabilities_and_equity"] - v["equity"]  # type: ignore[operator]
+        if v.get("ebit") is None and v.get("pretax_income") is not None:
+            v["ebit"] = v["pretax_income"] + (v.get("interest_expense") or 0.0)  # type: ignore[operator]
+        if v.get("depreciation") is None and v.get("depreciation_only") is not None:
+            v["depreciation"] = v["depreciation_only"] + (v.get("amortization_intangibles") or 0.0)  # type: ignore[operator]
+        ebitda = None
+        if v.get("ebit") is not None and v.get("depreciation") is not None:
+            ebitda = v["ebit"] + v["depreciation"]  # type: ignore[operator]
+        out.append(
+            FinancialStatement(
+                period_end=end,
+                currency=currency,
+                revenue=v.get("revenue"),
+                ebit=v.get("ebit"),
+                ebitda=ebitda,
+                net_income=v.get("net_income"),
+                total_assets=v.get("total_assets"),
+                total_liabilities=v.get("total_liabilities"),
+                current_assets=v.get("current_assets"),
+                current_liabilities=v.get("current_liabilities"),
+                equity=v.get("equity"),
+                total_debt=_total_debt(v),
+                cash=v.get("cash"),
+                retained_earnings=v.get("retained_earnings"),
+                operating_cash_flow=v.get("operating_cash_flow"),
+                capex=v.get("capex"),
+                shares_outstanding=_nearest(cover, end),
+                period_type="TTM",
+            )
+        )
+    return out
+
+
 class SecEdgarSource:
     name = "sec_edgar"
     TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
@@ -308,7 +466,10 @@ class SecEdgarSource:
         cik = self.cik(symbol)
         if cik is None:
             raise ProviderError(f"{symbol} no figura en el listado de emisores de la SEC")
-        return parse_companyfacts(self.http.get_json(self.FACTS_URL.format(cik=cik)))
+        payload = self.http.get_json(self.FACTS_URL.format(cik=cik))
+        annual = parse_companyfacts(payload)
+        ttm = parse_quarterly_ttm(payload, annual)
+        return sorted(annual + ttm, key=lambda s: s.period_end)
 
 
 FMP_FIELDS = {

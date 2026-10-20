@@ -118,6 +118,8 @@ class FundamentalPeriod(Base):
     capex: Mapped[float | None] = mapped_column(Float, nullable=True)
     shares_outstanding: Mapped[float | None] = mapped_column(Float, nullable=True)
     tax_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # None/"FY": ejercicio anual; "TTM": últimos 12 meses a un cierre trimestral.
+    period_type: Mapped[str | None] = mapped_column(String(4), nullable=True)
 
 
 class ScoreSnapshot(Base):
@@ -239,3 +241,31 @@ class NewsAnalysis(Base):
     impacts: Mapped[list] = mapped_column(JSON, default=list)
 
     item: Mapped[NewsItem] = relationship(back_populates="analysis")
+
+
+class DividendEvent(Base):
+    """Dividendo en efectivo por acción del activo en EE. UU. (fecha ex-dividendo)."""
+
+    __tablename__ = "dividends"
+    __table_args__ = (UniqueConstraint("instrument_id", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey("instruments.id"), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    amount: Mapped[float] = mapped_column(Float)
+
+
+class Holding(Base):
+    """Tenencia de la cartera del usuario. Costos totales en pesos y en dólares MEP."""
+
+    __tablename__ = "holdings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16), unique=True, index=True)
+    quantity: Mapped[float] = mapped_column(Float)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cost_ars: Mapped[float | None] = mapped_column(Float, nullable=True)
+    income_usd: Mapped[float] = mapped_column(Float, default=0.0)  # dividendos cobrados
+    opened_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="manual")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
