@@ -42,7 +42,7 @@ from app.ingestion.discovery import (
 )
 from app.ingestion.providers.base import MarketDataProvider, ProviderError
 from app.ingestion.universe import UNIVERSE, AssetSpec
-from app.services.analytics import compute_snapshots
+from app.services.analytics import compute_snapshots, refresh_presets
 from app.services.data import STATEMENT_FIELDS, load_bars
 
 log = logging.getLogger(__name__)
@@ -475,6 +475,10 @@ def run_ingestion(
         log.warning("Ingesta: %s", e)
 
     snapshots = compute_snapshots(session, end)
+    try:
+        refresh_presets(session)
+    except Exception as exc:  # la tabla de estrategias nunca debe tumbar la ingesta
+        errors.append(f"tabla de estrategias: {exc}")
     sources = dict(getattr(provider, "usage", {}) or {}) or provider.name
     counts["active"] = len(active)
     session.add(

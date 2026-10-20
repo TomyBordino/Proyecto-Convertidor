@@ -165,6 +165,16 @@ con la etapa alcista empeoraron en ambos.
 | **Robusta**: 30 por tendencia, sin etapa 4, inversa de la volatilidad | 12,7% | 24,2% | 16,1% | −51% | 14/23 |
 | Robusta + liquidez con el SPY bajista | 15,0% | 21,4% | 16,0% | −33% | 13/23 |
 
+### Estrategias validadas por cantidad de papeles
+
+`GET /api/backtest/presets` (se recalcula en cada ingesta, `presets_cache.json`): para Robusta, Robusta
+con protección y Básica, y para 5, 10, 20, 30 y 50 papeles, se elige el colchón con el mejor Sharpe en
+2004–2015 y se informan diseño, prueba (2016–hoy) y toda la historia. La página Backtest adapta la
+descripción, la tabla y los pasos de uso (peso por papel, zona de permanencia, operaciones por mes,
+capital mínimo según la comisión mínima del broker) a la cantidad elegida. Con 5–10 papeles la
+tendencia rindió más en toda la historia, pero casi toda la ventaja vino de 2016–2026 y con más
+volatilidad; con 30–50 los resultados son más parejos entre períodos.
+
 ## Mi cartera
 
 Página **Mi cartera** (`app/services/portfolio.py`, `portfolio_import.py`): tenencias cargadas a mano o

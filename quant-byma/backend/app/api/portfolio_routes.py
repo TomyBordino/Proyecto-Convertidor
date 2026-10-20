@@ -19,7 +19,7 @@ from app.analytics.backtest import (
 )
 from app.db.models import Holding, Instrument
 from app.db.session import get_session
-from app.services.analytics import load_panel
+from app.services.analytics import load_panel, load_presets, refresh_presets
 from app.services.events import load_macro
 from app.services.portfolio import Fx, analyze
 from app.services.portfolio_import import import_file
@@ -99,6 +99,21 @@ async def import_portfolio(
         "rows_skipped": res.rows_skipped,
         "warnings": res.warnings[:20],
     }
+
+
+@router.get("/backtest/presets")
+def backtest_presets(session: Session = SessionDep) -> dict:
+    """Estrategias validadas por cantidad de papeles (se recalcula en cada ingesta)."""
+    table = load_presets()
+    panel = load_panel()
+    stale = table is None or (
+        panel is not None and table.get("as_of") != str(panel["date"].max().date())
+    )
+    if stale:
+        table = refresh_presets(session)
+    if table is None:
+        raise HTTPException(404, "Todavía no hay panel histórico: ejecutá una ingesta")
+    return table
 
 
 @router.get("/backtest")

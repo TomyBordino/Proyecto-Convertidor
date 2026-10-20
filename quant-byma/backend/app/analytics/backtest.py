@@ -288,3 +288,73 @@ def quintile_returns(panel: pd.DataFrame, horizon: int = 20, key: str = "score")
             }
         )
     return out
+
+
+TOP_N_OPTIONS = (5, 10, 20, 30, 50)
+BUFFER_OPTIONS = (1.0, 1.5, 2.0, 3.0)
+DESIGN_END = 2015
+PRESETS: dict[str, dict] = {
+    "robusta": {"sort": "trend", "stages": [1, 2, 3], "weighting": "inv_vol"},
+    "proteccion": {
+        "sort": "trend",
+        "stages": [1, 2, 3],
+        "weighting": "inv_vol",
+        "regime": "spy_bear",
+    },
+    "basica": {"sort": "score"},
+}
+
+
+def _summary(r: dict) -> dict:
+    m = r.get("metrics", {})
+    s, u = m.get("strategy", {}), m.get("universe", {})
+    return {
+        "cagr": s.get("cagr"),
+        "sharpe": s.get("sharpe"),
+        "max_drawdown": s.get("max_drawdown"),
+        "vol": s.get("vol"),
+        "universe_cagr": u.get("cagr"),
+        "universe_sharpe": u.get("sharpe"),
+        "universe_drawdown": u.get("max_drawdown"),
+        "years_beat_universe": r.get("years_beat_universe"),
+        "years": len(r.get("by_year", [])),
+        "avg_turnover": r.get("avg_turnover"),
+    }
+
+
+def preset_table(
+    panel: pd.DataFrame, meta: dict[str, dict], cash: pd.Series | None, cost_bps: float = 50.0
+) -> dict:
+    """Para cada estrategia y cantidad de papeles: el colchón se elige con el mejor Sharpe en
+    el período de diseño (hasta DESIGN_END) y se informa el resultado en diseño, en prueba
+    (después de DESIGN_END) y en toda la historia. Rebalanceo mensual."""
+    out: dict[str, dict] = {}
+    for name, cfg in PRESETS.items():
+        out[name] = {}
+        for n in TOP_N_OPTIONS:
+            best: tuple[float, float, dict] | None = None
+            for b in BUFFER_OPTIONS:
+                st = Strategy(top_n=n, buffer=b, cost_bps=cost_bps, end_year=DESIGN_END, **cfg)
+                r = run_backtest(panel, meta, st, cash)
+                sharpe = (r.get("metrics", {}).get("strategy", {}) or {}).get("sharpe")
+                score = sharpe if sharpe is not None else -9.0
+                if best is None or score > best[0]:
+                    best = (score, b, r)
+            assert best is not None
+            b = best[1]
+            test = run_backtest(
+                panel,
+                meta,
+                Strategy(top_n=n, buffer=b, cost_bps=cost_bps, start_year=DESIGN_END + 1, **cfg),
+                cash,
+            )
+            full = run_backtest(
+                panel, meta, Strategy(top_n=n, buffer=b, cost_bps=cost_bps, **cfg), cash
+            )
+            out[name][str(n)] = {
+                "buffer": b,
+                "design": _summary(best[2]),
+                "test": _summary(test),
+                "full": _summary(full),
+            }
+    return {"design_end": DESIGN_END, "cost_bps": cost_bps, "presets": out}

@@ -12,3 +12,4 @@ __pycache__/
 logs/
 backend/panel_cache.pkl
 backend/panel_cache.tmp
+backend/presets_cache.json

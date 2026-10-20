@@ -375,6 +375,38 @@ def load_panel() -> pd.DataFrame | None:
     return pd.read_pickle(path) if path.exists() else None
 
 
+def _presets_path() -> Path:
+    return Path(get_settings().panel_cache_path).with_name("presets_cache.json")
+
+
+def refresh_presets(session: Session) -> dict | None:
+    """Recalcula la tabla de estrategias validadas por cantidad de papeles (≈1 minuto)."""
+    import json
+
+    from app.analytics.backtest import preset_table
+    from app.services.events import load_macro
+
+    panel = load_panel()
+    if panel is None or panel.empty:
+        return None
+    meta = {
+        i.ticker: {"kind": i.kind, "sector": i.sector} for i in session.scalars(select(Instrument))
+    }
+    ust3m = load_macro(session).get("UST3M")
+    cash = (ust3m / 100).sort_index() if ust3m is not None else None
+    table = preset_table(panel, meta, cash)
+    table["as_of"] = str(pd.Timestamp(panel["date"].max()).date())
+    _presets_path().write_text(json.dumps(_json_safe(table)))
+    return table
+
+
+def load_presets() -> dict | None:
+    import json
+
+    path = _presets_path()
+    return json.loads(path.read_text()) if path.exists() else None
+
+
 def diagnosis_columns(d: dict | None) -> dict:
     """Campos planos del diagnóstico para la tabla y el screener."""
     if not d:

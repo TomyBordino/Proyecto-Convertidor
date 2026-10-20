@@ -516,6 +516,33 @@ export interface BacktestResult {
   quintiles: { quintile: number; cagr: number | null; hit_rate: number; periods: number }[];
 }
 
+export interface PresetSummary {
+  cagr: number | null;
+  sharpe: number | null;
+  max_drawdown: number | null;
+  vol: number | null;
+  universe_cagr: number | null;
+  universe_sharpe: number | null;
+  universe_drawdown: number | null;
+  years_beat_universe: number | null;
+  years: number;
+  avg_turnover: number | null;
+}
+
+export interface PresetRow {
+  buffer: number;
+  design: PresetSummary;
+  test: PresetSummary;
+  full: PresetSummary;
+}
+
+export interface PresetTable {
+  as_of: string;
+  design_end: number;
+  cost_bps: number;
+  presets: Record<"robusta" | "proteccion" | "basica", Record<string, PresetRow>>;
+}
+
 export interface PortfolioHolding {
   id: number;
   ticker: string;

@@ -201,3 +201,14 @@ def test_backtest_endpoint(seeded_client):
     if plan["picks"]:
         assert sum(p["weight"] for p in plan["picks"]) == pytest.approx(1.0, abs=0.01)
     assert seeded_client.get("/api/backtest", params={"rebalance": 7}).status_code == 422
+
+
+def test_backtest_presets_endpoint(seeded_client):
+    r = seeded_client.get("/api/backtest/presets")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body["presets"]) == {"robusta", "proteccion", "basica"}
+    row = body["presets"]["robusta"]["20"]
+    assert row["buffer"] in (1.0, 1.5, 2.0, 3.0)
+    assert {"design", "test", "full"} <= set(row)
+    assert "NaN" not in r.text
