@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api, ApiError, fetcher, type BacktestResult, type PerfMetrics, type PresetRow, type PresetTable } from "@/lib/api";
 import { fmtMoney, fmtNumber, fmtProb, fmtReturn } from "@/lib/format";
+import { useStored } from "@/lib/stored";
 import { cn } from "@/lib/utils";
 
 const axis = { fontSize: 11, fill: "var(--muted-foreground)" };
@@ -238,9 +239,9 @@ export function BacktestView() {
   );
 }
 
-type Preset = "robusta" | "proteccion" | "base";
+export type Preset = "robusta" | "proteccion" | "base";
 
-const PRESET_KEY: Record<Preset, "robusta" | "proteccion" | "basica"> = {
+export const PRESET_KEY: Record<Preset, "robusta" | "proteccion" | "basica"> = {
   robusta: "robusta",
   proteccion: "proteccion",
   base: "basica",
@@ -485,28 +486,13 @@ function StrategyGuide({
   );
 }
 
-function TodayPlan({ data, rebalance, buffer }: { data: BacktestResult; rebalance: number; buffer: number }) {
+export function TodayPlan({ data, rebalance, buffer }: { data: BacktestResult; rebalance: number; buffer: number }) {
   const plan = data.plan;
-  const [capital, setCapital] = useState(() => {
-    try {
-      return localStorage.getItem("qb-capital") ?? "";
-    } catch {
-      return "";
-    }
-  });
+  const [capital, saveCapital] = useStored("qb-capital", "");
   if (!plan) return null;
   const cap = Number(capital.replace(/\./g, "").replace(",", ".")) || 0;
   const rows = [...plan.picks].sort((a, b) => Number(a.held) - Number(b.held) || b.weight - a.weight);
   const nBuy = rows.filter((r) => !r.held).length;
-
-  function saveCapital(v: string) {
-    setCapital(v);
-    try {
-      localStorage.setItem("qb-capital", v);
-    } catch {
-      /* sin almacenamiento local */
-    }
-  }
 
   return (
     <Card>
