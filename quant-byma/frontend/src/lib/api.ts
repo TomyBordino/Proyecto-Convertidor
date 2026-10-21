@@ -507,9 +507,16 @@ export interface BacktestResult {
     as_of: string;
     out_of_market: boolean;
     benchmark_stage: number | null;
-    picks: { ticker: string; name: string | null; weight: number; held: boolean }[];
+    picks: {
+      ticker: string;
+      name: string | null;
+      weight: number;
+      held: boolean;
+      quantity_held: number | null;
+      price_ars: number | null;
+    }[];
     keep: { ticker: string; name: string | null }[];
-    sell: { ticker: string; name: string | null }[];
+    sell: { ticker: string; name: string | null; quantity_held: number | null }[];
     keep_zone: string[];
     has_portfolio: boolean;
   };

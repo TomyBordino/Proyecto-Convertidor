@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.analytics.backtest import (
@@ -17,7 +17,7 @@ from app.analytics.backtest import (
     quintile_returns,
     run_backtest,
 )
-from app.db.models import Holding, Instrument
+from app.db.models import Holding, Instrument, ScoreSnapshot
 from app.db.session import get_session
 from app.services.analytics import load_panel, load_presets, refresh_presets
 from app.services.events import load_macro
@@ -164,21 +164,34 @@ def backtest(
         rebalance,
     )
     names = {i.ticker: i.name for i in session.scalars(select(Instrument))}
-    plan = current_plan(panel, meta, st)
     held = {h.ticker: h.quantity for h in session.scalars(select(Holding))}
+    plan = current_plan(panel, meta, st, set(held))
     weights = plan["weights"]
-    keep = [t for t in held if t in plan["keep_zone"] and t not in weights]
+    day = session.scalar(select(func.max(ScoreSnapshot.day)))
+    prices = {
+        sn.metrics["ticker"]: sn.metrics.get("price_ars")
+        for sn in session.scalars(select(ScoreSnapshot).where(ScoreSnapshot.day == day))
+    }
     out["plan"] = {
         **plan,
+        # Cartera objetivo completa (N papeles, pesos que suman 100%): los que ya tenés y se
+        # mantienen, y los que hay que comprar.
         "picks": [
-            {"ticker": t, "name": names.get(t), "weight": w, "held": t in held}
+            {
+                "ticker": t,
+                "name": names.get(t),
+                "weight": w,
+                "held": t in held,
+                "quantity_held": held.get(t),
+                "price_ars": prices.get(t),
+            }
             for t, w in weights.items()
         ],
-        "keep": [{"ticker": t, "name": names.get(t)} for t in keep],
+        "keep": [],
         "sell": [
-            {"ticker": t, "name": names.get(t)}
-            for t in held
-            if t in meta and t not in weights and t not in keep
+            {"ticker": t, "name": names.get(t), "quantity_held": q}
+            for t, q in held.items()
+            if t in meta and t not in weights
         ],
         "has_portfolio": bool(held),
     }

@@ -138,10 +138,13 @@ def _weights(
     return {t: round(1 / n, 4) for t in picks}
 
 
-def current_plan(panel: pd.DataFrame, meta: dict[str, dict], s: Strategy) -> dict:
-    """Qué indica la estrategia hoy: selección con pesos, zona de permanencia (los primeros
-    buffer × N, que pueden conservarse si ya están en cartera) y si el filtro de mercado
-    está activo."""
+def current_plan(
+    panel: pd.DataFrame, meta: dict[str, dict], s: Strategy, held: set[str] | None = None
+) -> dict:
+    """Qué indica la estrategia hoy, con la misma regla que el backtest: los papeles que ya
+    están en cartera y siguen dentro de la zona de permanencia (los primeros buffer × N)
+    ocupan uno de los N lugares, y el resto se completa con los mejores del ranking. Los
+    pesos se reparten entre esos N papeles finales y suman 100%."""
     key = SORT_KEYS[s.sort]
     last = panel["date"].max()
     day = panel[panel["date"] == last].copy()
@@ -157,7 +160,7 @@ def current_plan(panel: pd.DataFrame, meta: dict[str, dict], s: Strategy) -> dic
     if s.sectors:
         day = day[day["sector"].isin(s.sectors)]
     ranked = _ranked(day, s, key)
-    picks = ranked[: s.top_n]
+    picks = _select(day, s, key, held) if held else ranked[: s.top_n]
     return {
         "as_of": str(pd.Timestamp(last).date()),
         "out_of_market": out,

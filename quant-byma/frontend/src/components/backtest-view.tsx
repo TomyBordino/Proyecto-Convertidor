@@ -6,11 +6,12 @@ import useSWR from "swr";
 
 import { ErrorState, LoadingState } from "@/components/state";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api, ApiError, fetcher, type BacktestResult, type PerfMetrics, type PresetRow, type PresetTable } from "@/lib/api";
-import { fmtNumber, fmtProb, fmtReturn } from "@/lib/format";
+import { fmtMoney, fmtNumber, fmtProb, fmtReturn } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const axis = { fontSize: 11, fill: "var(--muted-foreground)" };
@@ -486,9 +487,27 @@ function StrategyGuide({
 
 function TodayPlan({ data, rebalance, buffer }: { data: BacktestResult; rebalance: number; buffer: number }) {
   const plan = data.plan;
+  const [capital, setCapital] = useState(() => {
+    try {
+      return localStorage.getItem("qb-capital") ?? "";
+    } catch {
+      return "";
+    }
+  });
   if (!plan) return null;
-  const buys = plan.picks.filter((p) => !p.held);
-  const holdTop = plan.picks.filter((p) => p.held);
+  const cap = Number(capital.replace(/\./g, "").replace(",", ".")) || 0;
+  const rows = [...plan.picks].sort((a, b) => Number(a.held) - Number(b.held) || b.weight - a.weight);
+  const nBuy = rows.filter((r) => !r.held).length;
+
+  function saveCapital(v: string) {
+    setCapital(v);
+    try {
+      localStorage.setItem("qb-capital", v);
+    } catch {
+      /* sin almacenamiento local */
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -507,15 +526,69 @@ function TodayPlan({ data, rebalance, buffer }: { data: BacktestResult; rebalanc
           </p>
         ) : (
           <>
-            {!plan.has_portfolio && (
-              <p className="text-muted-foreground">
-                Cargá tu cartera en <a className="underline" href="/cartera">Mi cartera</a> para ver qué vender y qué mantener.
-              </p>
+            <p className="text-muted-foreground">
+              El porcentaje es el <b>peso objetivo</b> de cada papel: la parte del capital que destinás a la estrategia. Los pesos de la
+              cartera objetivo ({rows.length} papeles) suman 100%: los que ya tenés y se mantienen ocupan lugares, y se compran solo los{" "}
+              {nBuy} que faltan.
+              {!plan.has_portfolio && (
+                <>
+                  {" "}
+                  Cargá tu cartera en <a className="underline" href="/cartera">Mi cartera</a> para ver qué mantener y qué vender.
+                </>
+              )}
+            </p>
+            <label className="flex flex-wrap items-center gap-2">
+              <span>Capital destinado a la estrategia (ARS):</span>
+              <Input className="h-8 w-44" inputMode="decimal" placeholder="Ej.: 5.000.000" value={capital} onChange={(e) => saveCapital(e.target.value)} />
+            </label>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Papel</TableHead>
+                    <TableHead>Acción</TableHead>
+                    <TableHead className="text-right">Peso</TableHead>
+                    <TableHead className="text-right">Precio ARS</TableHead>
+                    <TableHead className="text-right">Monto objetivo</TableHead>
+                    <TableHead className="text-right">Cantidad objetivo</TableHead>
+                    {plan.has_portfolio && <TableHead className="text-right">Tenés</TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="tabular">
+                  {rows.map((r) => {
+                    const amount = cap * r.weight;
+                    const qty = r.price_ars ? Math.floor(amount / r.price_ars) : null;
+                    return (
+                      <TableRow key={r.ticker}>
+                        <TableCell>
+                          <a href={`/asset/${r.ticker}`} className="font-medium hover:text-primary" title={r.name ?? ""}>
+                            {r.ticker}
+                          </a>
+                        </TableCell>
+                        <TableCell className={r.held ? "text-muted-foreground" : "text-positive"}>{r.held ? "Mantener" : "Comprar"}</TableCell>
+                        <TableCell className="text-right">{fmtProb(r.weight, 1)}</TableCell>
+                        <TableCell className="text-right">{fmtMoney(r.price_ars, "ARS")}</TableCell>
+                        <TableCell className="text-right">{cap ? fmtMoney(amount, "ARS", 0) : "—"}</TableCell>
+                        <TableCell className="text-right">{cap && qty !== null ? fmtNumber(qty, 0) : "—"}</TableCell>
+                        {plan.has_portfolio && (
+                          <TableCell className="text-right text-muted-foreground">
+                            {r.quantity_held != null ? fmtNumber(r.quantity_held, 0) : "—"}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {plan.sell.length > 0 && (
+              <PlanList title="Vender (salieron de la zona de permanencia)" tone="neg" items={plan.sell} />
             )}
-            <PlanList title={plan.has_portfolio ? "Comprar" : "Cartera objetivo"} tone="pos" items={buys.map((p) => ({ ...p, w: p.weight }))} />
-            {holdTop.length > 0 && <PlanList title="Mantener (siguen en el top)" items={holdTop.map((p) => ({ ...p, w: p.weight }))} />}
-            {plan.keep.length > 0 && <PlanList title="Mantener (zona de permanencia)" items={plan.keep} />}
-            {plan.sell.length > 0 && <PlanList title="Vender" tone="neg" items={plan.sell} />}
+            <p className="text-muted-foreground">
+              La cantidad objetivo redondea hacia abajo (CEDEARs o acciones enteras), así que puede sobrar algo de efectivo. En los que
+              mantenés no hace falta ajustar la cantidad salvo que estén muy lejos del objetivo (por ejemplo, el doble o la mitad):
+              cada ajuste cuesta comisión.
+            </p>
           </>
         )}
       </CardContent>
@@ -652,7 +725,7 @@ function Results({ data, rebalance, buffer }: { data: BacktestResult; rebalance:
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4">
         <Card>
           <CardHeader>
             <CardTitle>¿El orden del modelo se traduce en plata?</CardTitle>
@@ -672,8 +745,9 @@ function Results({ data, rebalance, buffer }: { data: BacktestResult; rebalance:
             </ResponsiveContainer>
           </CardContent>
         </Card>
-        <TodayPlan data={data} rebalance={rebalance} buffer={buffer} />
       </div>
+
+      <TodayPlan data={data} rebalance={rebalance} buffer={buffer} />
 
       <Card>
         <CardHeader>

@@ -229,3 +229,18 @@ def test_weighting_schemes():
     rc = w * (cov @ w) / (w @ cov @ w)
     assert rc == pytest.approx([1 / 3] * 3, abs=1e-3)
     assert w[2] > w[0] and w[2] > w[1]
+
+
+def test_plan_keeps_held_names_inside_the_n_slots():
+    from app.analytics.backtest import current_plan
+
+    panel = build_panel(_synthetic_assets(n_assets=40))
+    meta = {t: {"kind": "CEDEAR", "sector": "S"} for t in panel["ticker"].unique()}
+    s = Strategy(top_n=8, buffer=2.0)
+    fresh = current_plan(panel, meta, s)
+    zone = fresh["keep_zone"]
+    held = {zone[10], zone[12]}  # fuera del top 8 pero dentro de la zona (16)
+    plan = current_plan(panel, meta, s, held)
+    assert len(plan["weights"]) == 8  # siempre N papeles en total
+    assert held <= set(plan["weights"])  # los que se mantienen ocupan lugares
+    assert sum(plan["weights"].values()) == pytest.approx(1.0, abs=0.01)
