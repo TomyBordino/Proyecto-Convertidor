@@ -1,0 +1,15 @@
+backend/.venv/
+backend/*.db
+backend/*.db-journal
+backend/*.db-wal
+backend/*.db-shm
+backend/.env
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+logs/
+backend/panel_cache.pkl
+backend/panel_cache.tmp
+backend/presets_cache.json

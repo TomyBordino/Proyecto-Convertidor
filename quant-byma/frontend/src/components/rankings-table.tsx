@@ -1,0 +1,237 @@
+"use client";
+
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+
+import { RangeBar } from "@/components/price-range";
+import { ScoreBar } from "@/components/score-bar";
+import { SignalBadges } from "@/components/signal-badges";
+import { PressureBadge } from "@/components/events-shared";
+import { BiasBadge, StageBadge } from "@/components/stage-badge";
+import { ProbBar } from "@/components/prob-bar";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { RankingItem } from "@/lib/api";
+import { fmtCompact, fmtMoney, fmtNumber, fmtPct, fmtReturn } from "@/lib/format";
+import { cn } from "@/lib/utils";
+
+type SortKey =
+  | "rank"
+  | "ticker"
+  | "price_ars"
+  | "price_usd"
+  | "change_1m_pct"
+  | "stage"
+  | "prob_up_20"
+  | "prob_up_60"
+  | "prob_up_120"
+  | "ccl_dev_pct"
+  | "pe"
+  | "avg_volume_ars"
+  | "score_pct"
+  | "news_score"
+  | "range_mid_60"
+  | "composite_score";
+
+interface Column {
+  key: SortKey;
+  label: string;
+  align?: "right";
+  title?: string;
+}
+
+const COLUMNS: Column[] = [
+  { key: "rank", label: "#" },
+  { key: "ticker", label: "Activo" },
+  { key: "price_ars", label: "Precio ARS", align: "right" },
+  { key: "change_1m_pct", label: "1M (USD)", align: "right" },
+  { key: "stage", label: "Etapa", title: "Etapa de Weinstein y submomento" },
+  { key: "score_pct", label: "Puntaje", align: "right", title: "Percentil del puntaje del modelo en el universo (0–100): ordena dentro de una misma probabilidad" },
+  { key: "prob_up_20", label: "P(suba) 1M", title: "Probabilidad calibrada de cotizar más alto en 20 ruedas" },
+  { key: "prob_up_60", label: "P(suba) 3M", title: "Probabilidad calibrada de cotizar más alto en 60 ruedas (la línea marca la tasa base)" },
+  { key: "prob_up_120", label: "P(suba) 6M", title: "Probabilidad calibrada de cotizar más alto en 120 ruedas" },
+  { key: "range_mid_60", label: "Rango 3M", title: "Rango probable de retorno en USD a 60 ruedas: piso (10%) y techo (90%); la marca es la mediana. Validado fuera de muestra" },
+  { key: "news_score", label: "Contexto", title: "Noticias interpretadas por Claude y eventos macro vigentes con historia significativa para el sector (no alteran las probabilidades)" },
+  { key: "pe", label: "P/E", align: "right" },
+  { key: "ccl_dev_pct", label: "Desvío CCL", align: "right", title: "CCL implícito vs mercado" },
+  { key: "avg_volume_ars", label: "Volumen", align: "right", title: "Promedio diario en BYMA (ARS)" },
+  { key: "composite_score", label: "Score", title: "Score de Revalorización (0–100)" },
+];
+
+function compare(a: unknown, b: unknown): number {
+  if (a === null || a === undefined) return 1;
+  if (b === null || b === undefined) return -1;
+  if (typeof a === "string" && typeof b === "string") return a.localeCompare(b);
+  return (a as number) - (b as number);
+}
+
+export function RankingsTable({ items }: { items: RankingItem[] }) {
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
+    key: "prob_up_60",
+    dir: "desc",
+  });
+
+  const sorted = useMemo(() => {
+    const out = [...items].sort((a, b) => {
+      const av = a[sort.key];
+      const bv = b[sort.key];
+      // los nulos quedan siempre al final, sin importar la dirección
+      if (av === null || av === undefined) return 1;
+      if (bv === null || bv === undefined) return -1;
+      let c = compare(av, bv);
+      // Las probabilidades calibradas se agrupan en escalones: el puntaje desempata.
+      if (c === 0 && sort.key.startsWith("prob_")) c = compare(a.score_pct, b.score_pct);
+      return sort.dir === "asc" ? c : -c;
+    });
+    return out;
+  }, [items, sort]);
+
+  function toggle(key: SortKey) {
+    setSort((s) =>
+      s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "ticker" ? "asc" : "desc" },
+    );
+  }
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
+          {COLUMNS.map((c) => {
+            const Icon = sort.key !== c.key ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
+            return (
+              <TableHead key={c.key} className={cn(c.align === "right" && "text-right")} title={c.title}>
+                <button
+                  type="button"
+                  onClick={() => toggle(c.key)}
+                  className={cn(
+                    "inline-flex items-center gap-1 hover:text-foreground",
+                    sort.key === c.key && "text-foreground",
+                  )}
+                >
+                  {c.label}
+                  <Icon className="size-3" />
+                </button>
+              </TableHead>
+            );
+          })}
+          <TableHead>Señales</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody className="tabular">
+        {sorted.map((r) => (
+          <TableRow key={r.ticker}>
+            <TableCell className="text-muted-foreground">{r.rank}</TableCell>
+            <TableCell>
+              <Link href={`/asset/${r.ticker}`} className="group flex flex-col">
+                <span className="flex items-center gap-1.5 font-medium group-hover:text-primary">
+                  {r.ticker}
+                  <Badge variant={r.kind === "CEDEAR" ? "default" : "secondary"}>{r.kind}</Badge>
+                  {r.valuation_state && (
+                    <Badge
+                      variant={r.valuation_state === "Barata" ? "positive" : r.valuation_state === "Cara" ? "negative" : "outline"}
+                      title="Valuación vs su sector (P/E, P/S y P/B)"
+                    >
+                      {r.valuation_state}
+                    </Badge>
+                  )}
+                </span>
+                <span className="max-w-48 truncate text-xs text-muted-foreground">
+                  {r.name} · {r.sector}
+                </span>
+              </Link>
+            </TableCell>
+            <TableCell className="text-right">{fmtMoney(r.price_ars, "ARS")}</TableCell>
+            <TableCell
+              className={cn(
+                "text-right",
+                (r.change_1m_pct ?? 0) > 0 ? "text-positive" : (r.change_1m_pct ?? 0) < 0 ? "text-negative" : "",
+              )}
+            >
+              {fmtPct(r.change_1m_pct ?? null, 1)}
+            </TableCell>
+            <TableCell>
+              <StageBadge stage={r.stage} substate={r.substate} />
+            </TableCell>
+            <TableCell className="text-right font-medium">{r.score_pct == null ? "—" : r.score_pct.toFixed(0)}</TableCell>
+            <TableCell>
+              <ProbBar p={r.prob_up_20} />
+            </TableCell>
+            <TableCell>
+              <div className="flex flex-col gap-1">
+                <ProbBar p={r.prob_up_60} base={r.base_rate_60} />
+                <BiasBadge bias={r.bias} significant={r.bias_significant} />
+              </div>
+            </TableCell>
+            <TableCell>
+              <ProbBar p={r.prob_up_120} />
+            </TableCell>
+            <TableCell>
+              <RangeCell r={r} />
+            </TableCell>
+            <TableCell>
+              <ContextCell r={r} />
+            </TableCell>
+            <TableCell className="text-right">{fmtNumber(r.pe, 1)}</TableCell>
+            <TableCell
+              className={cn(
+                "text-right",
+                r.ccl_dev_pct !== null && r.ccl_dev_pct < 0 && "text-positive",
+                r.ccl_dev_pct !== null && r.ccl_dev_pct > 0 && "text-negative",
+              )}
+            >
+              {fmtPct(r.ccl_dev_pct)}
+            </TableCell>
+            <TableCell className="text-right text-muted-foreground">{fmtCompact(r.avg_volume_ars)}</TableCell>
+            <TableCell>
+              <ScoreBar score={r.composite_score} />
+            </TableCell>
+            <TableCell>
+              <SignalBadges signals={r.signals} />
+            </TableCell>
+          </TableRow>
+        ))}
+        {!sorted.length && (
+          <TableRow>
+            <TableCell colSpan={COLUMNS.length + 1} className="py-10 text-center text-muted-foreground">
+              Ningún activo cumple los filtros.
+            </TableCell>
+          </TableRow>
+        )}
+      </TableBody>
+    </Table>
+  );
+}
+
+function ContextCell({ r }: { r: RankingItem }) {
+  const fav = r.events_favorable ?? 0;
+  const unfav = r.events_unfavorable ?? 0;
+  if (!r.news_label && !fav && !unfav) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {r.news_label && r.news_label !== "Neutral" && <PressureBadge label={r.news_label} score={r.news_score} />}
+      {(fav > 0 || unfav > 0) && (
+        <span className="text-[11px] text-muted-foreground" title="Eventos macro vigentes tras los que el sector históricamente le ganó (▲) o perdió (▼) contra el universo">
+          Macro: {fav > 0 && <span className="text-positive">▲{fav}</span>} {unfav > 0 && <span className="text-negative">▼{unfav}</span>}
+        </span>
+      )}
+      {r.news_label === "Neutral" && !fav && !unfav && <span className="text-[11px] text-muted-foreground">Noticias neutras</span>}
+    </div>
+  );
+}
+
+function RangeCell({ r }: { r: RankingItem }) {
+  const lo = r.range_low_60;
+  const mid = r.range_mid_60;
+  const hi = r.range_high_60;
+  if (lo == null || mid == null || hi == null) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="w-28 space-y-0.5" title={`Piso ${fmtReturn(lo)} · mediana ${fmtReturn(mid)} · techo ${fmtReturn(hi)} (USD, 3 meses)`}>
+      <RangeBar r={{ p10: lo, p25: lo, p50: mid, p75: hi, p90: hi }} scale={0.45} />
+      <div className="flex justify-between text-[11px]">
+        <span className="text-negative">{fmtReturn(lo, 0)}</span>
+        <span className="text-positive">{fmtReturn(hi, 0)}</span>
+      </div>
+    </div>
+  );
+}
