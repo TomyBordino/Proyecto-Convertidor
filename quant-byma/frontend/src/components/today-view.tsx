@@ -157,7 +157,7 @@ export function TodayView() {
       ) : !data ? (
         <LoadingState label="Calculando la cartera objetivo…" />
       ) : (
-        <TodayPlan data={data} rebalance={20} buffer={buffer} />
+        <TodayPlan data={data} rebalance={20} buffer={buffer} strategy={{ name: LABEL[preset], preset }} />
       )}
 
       <Card>

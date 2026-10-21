@@ -486,8 +486,20 @@ function StrategyGuide({
   );
 }
 
-export function TodayPlan({ data, rebalance, buffer }: { data: BacktestResult; rebalance: number; buffer: number }) {
+export function TodayPlan({
+  data,
+  rebalance,
+  buffer,
+  strategy,
+}: {
+  data: BacktestResult;
+  rebalance: number;
+  buffer: number;
+  strategy?: Record<string, unknown>;
+}) {
   const plan = data.plan;
+  const [saved, setSaved] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [capital, saveCapital] = useStored("qb-capital", "");
   if (!plan) return null;
   const cap = Number(capital.replace(/\./g, "").replace(",", ".")) || 0;
@@ -570,6 +582,43 @@ export function TodayPlan({ data, rebalance, buffer }: { data: BacktestResult; r
             {plan.sell.length > 0 && (
               <PlanList title="Vender (salieron de la zona de permanencia)" tone="neg" items={plan.sell} />
             )}
+            <div className="flex flex-wrap items-center gap-2 rounded-md border p-3">
+              <Button
+                size="sm"
+                disabled={!cap}
+                onClick={async () => {
+                  setSaveError(null);
+                  try {
+                    const r = await api.saveTracking({
+                      capital: cap,
+                      strategy: { ...(strategy ?? {}), top_n: rows.length, buffer },
+                      picks: rows.map((r) => ({ ticker: r.ticker, weight: r.weight })),
+                    });
+                    setSaved(r.start);
+                  } catch (e) {
+                    setSaveError(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Guardar para seguimiento
+              </Button>
+              <span className="text-muted-foreground">
+                {saved ? (
+                  <>
+                    Guardada con precios del {saved}. Mirá cómo evoluciona en{" "}
+                    <a className="underline" href="/seguimiento">
+                      Seguimiento
+                    </a>
+                    .
+                  </>
+                ) : cap ? (
+                  "Registra esta cartera con los precios de hoy para medir cómo rinde contra el SPY y el universo. Guardala en cada rebalanceo."
+                ) : (
+                  "Ingresá el capital para poder guardarla."
+                )}
+              </span>
+              {saveError && <span className="text-negative">{saveError}</span>}
+            </div>
             <p className="text-muted-foreground">
               La cantidad objetivo redondea hacia abajo (CEDEARs o acciones enteras), así que puede sobrar algo de efectivo. En los que
               mantenés no hace falta ajustar la cantidad salvo que estén muy lejos del objetivo (por ejemplo, el doble o la mitad):

@@ -17,12 +17,13 @@ from app.analytics.backtest import (
     quintile_returns,
     run_backtest,
 )
-from app.db.models import Holding, Instrument, ScoreSnapshot
+from app.db.models import Holding, Instrument, ScoreSnapshot, TrackedPeriod
 from app.db.session import get_session
 from app.services.analytics import load_panel, load_presets, refresh_presets
 from app.services.events import load_macro
 from app.services.portfolio import Fx, analyze
 from app.services.portfolio_import import import_file
+from app.services.tracking import save_period, tracking_report
 
 router = APIRouter(prefix="/api")
 SessionDep = Depends(get_session)
@@ -99,6 +100,40 @@ async def import_portfolio(
         "rows_skipped": res.rows_skipped,
         "warnings": res.warnings[:20],
     }
+
+
+class TrackPick(BaseModel):
+    ticker: str
+    weight: float = Field(gt=0, le=1)
+
+
+class TrackIn(BaseModel):
+    capital: float = Field(gt=0)
+    strategy: dict = Field(default_factory=dict)
+    picks: list[TrackPick] = Field(min_length=1, max_length=100)
+
+
+@router.post("/tracking", status_code=201)
+def track_save(body: TrackIn, session: Session = SessionDep) -> dict:
+    """Guarda la cartera objetivo de hoy para seguirla en el tiempo (una por rebalanceo)."""
+    try:
+        period = save_period(
+            session, body.strategy, body.capital, [p.model_dump() for p in body.picks]
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"id": period.id, "start": str(period.start), "positions": len(period.positions)}
+
+
+@router.get("/tracking")
+def track_report(session: Session = SessionDep) -> dict:
+    return tracking_report(session)
+
+
+@router.delete("/tracking/{period_id}", status_code=204)
+def track_delete(period_id: int, session: Session = SessionDep) -> None:
+    session.execute(delete(TrackedPeriod).where(TrackedPeriod.id == period_id))
+    session.commit()
 
 
 @router.get("/backtest/presets")

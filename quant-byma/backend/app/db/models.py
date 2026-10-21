@@ -269,3 +269,18 @@ class Holding(Base):
     opened_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="manual")
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class TrackedPeriod(Base):
+    """Cartera objetivo guardada para seguimiento (una por rebalanceo). Precios de entrada
+    del día de los datos (`start`), cantidades enteras y efectivo sobrante."""
+
+    __tablename__ = "tracked_periods"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    start: Mapped[date] = mapped_column(Date, index=True)
+    strategy: Mapped[dict] = mapped_column(JSON)
+    capital_ars: Mapped[float] = mapped_column(Float)
+    cash_ars: Mapped[float] = mapped_column(Float, default=0.0)
+    positions: Mapped[list] = mapped_column(JSON)

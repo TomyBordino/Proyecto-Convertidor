@@ -550,6 +550,43 @@ export interface PresetTable {
   presets: Record<"robusta" | "proteccion" | "basica", Record<string, PresetRow>>;
 }
 
+export interface TrackingReport {
+  summary: {
+    start: string;
+    as_of: string;
+    days: number;
+    periods: number;
+    return_usd: number | null;
+    return_ars: number | null;
+    spy: number | null;
+    universe: number | null;
+    cash_ars: number | null;
+    value_ars: number | null;
+  } | null;
+  series: { time: string; strategy: number | null; strategy_ars: number | null; spy: number | null; universe: number | null }[];
+  periods: {
+    id: number;
+    start: string;
+    end: string;
+    strategy: Record<string, unknown>;
+    capital_ars: number;
+    positions: number;
+    return_usd: number | null;
+    return_ars: number | null;
+  }[];
+  positions: {
+    ticker: string;
+    quantity: number;
+    weight_target: number;
+    weight_now: number | null;
+    entry_price_ars: number;
+    price_ars: number | null;
+    value_ars: number | null;
+    return_ars: number | null;
+    return_usd: number | null;
+  }[];
+}
+
 export interface PortfolioHolding {
   id: number;
   ticker: string;
@@ -675,5 +712,8 @@ export const api = {
     }
     return (await res.json()) as ImportSummary;
   },
+  saveTracking: (body: { capital: number; strategy: Record<string, unknown>; picks: { ticker: string; weight: number }[] }) =>
+    request<{ id: number; start: string; positions: number }>("/api/tracking", { method: "POST", body: JSON.stringify(body) }),
+  deleteTracking: (id: number) => request<void>(`/api/tracking/${id}`, { method: "DELETE" }),
   refreshEvents: () => request<Record<string, unknown>>("/api/events/refresh", { method: "POST" }),
 };

@@ -244,3 +244,24 @@ def test_plan_keeps_held_names_inside_the_n_slots():
     assert len(plan["weights"]) == 8  # siempre N papeles en total
     assert held <= set(plan["weights"])  # los que se mantienen ocupan lugares
     assert sum(plan["weights"].values()) == pytest.approx(1.0, abs=0.01)
+
+
+def test_tracking_save_and_report(seeded_client):
+    picks = [{"ticker": "AAPL", "weight": 0.5}, {"ticker": "KO", "weight": 0.5}]
+    r = seeded_client.post(
+        "/api/tracking", json={"capital": 1_000_000, "strategy": {"name": "x"}, "picks": picks}
+    )
+    assert r.status_code == 201, r.text
+    again = seeded_client.post("/api/tracking", json={"capital": 1_000_000, "picks": picks})
+    assert again.status_code == 201  # mismo día: reemplaza, no duplica
+    body = seeded_client.get("/api/tracking").json()
+    assert len(body["periods"]) == 1 and body["summary"]["periods"] == 1
+    assert {p["ticker"] for p in body["positions"]} == {"AAPL", "KO"}
+    assert body["series"] and body["series"][0]["strategy"] == pytest.approx(100, abs=1)
+    assert "NaN" not in str(body)
+    assert seeded_client.delete(f"/api/tracking/{body['periods'][0]['id']}").status_code == 204
+    assert seeded_client.get("/api/tracking").json()["periods"] == []
+    bad = seeded_client.post(
+        "/api/tracking", json={"capital": 1000, "picks": [{"ticker": "NOPE", "weight": 1}]}
+    )
+    assert bad.status_code == 422
